@@ -19,7 +19,6 @@ entornos donde tengas permiso.
 - `requirements.txt`: dependencias Python.
 - `install.bat`: instalador rapido para Windows.
 - `docs/agent_usage.md`: guia con ejemplos de llamadas MCP.
-- `sample/memory_scanner.py`: ejemplo local de scanner GUI estilo Cheat Engine.
 
 ## Caracteristicas
 
@@ -270,7 +269,7 @@ Herramienta: `mem_scan_file_status`.
 Comprobar sintaxis:
 
 ```bat
-python -m py_compile memory_mcp_server.py sample\memory_scanner.py
+python -m py_compile memory_mcp_server.py
 ```
 
 El repositorio ignora `venv/`, `__pycache__/`, `.pytest_cache/` y los resultados
