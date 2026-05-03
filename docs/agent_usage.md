@@ -102,6 +102,22 @@ Use with `mem_read`.
 Use with `mem_disassemble`. Prefer this over manually counting instruction
 bytes. It returns branch targets and RIP-relative targets.
 
+For several addresses, prefer `mem_disassemble_batch` instead of several tool
+calls in one turn:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "ranges": [
+      {"label": "site_a", "address": "DemoApp.exe+0x123450", "size": 160},
+      {"label": "site_b", "address": "DemoApp.exe+0x123730", "size": 160}
+    ],
+    "syntax": "intel"
+  }
+}
+```
+
 ### Find Direct Callers
 
 Do not scan for bare `E8`; it is too noisy. Use `mem_find_callers`, which
@@ -133,7 +149,7 @@ If you only know RVAs, pass `module_name` and short targets:
 ```
 
 The output gives `call_site`, `target`, `next_ip`, `disp32`, bytes and RVA.
-Then call `mem_disassemble` around each `call_site`.
+Then call `mem_disassemble_batch` around the interesting `call_site` addresses.
 
 ### Batch Reads
 
@@ -163,13 +179,16 @@ Use with `mem_watch_batch`. It is better than many small `mem_read` calls.
 
 Always narrow expensive scans when possible.
 
+AOB wildcards support `??`/`?` for full bytes and nibble wildcards such as
+`4?` and `?F`. Keep tokens space-separated.
+
 Good:
 
 ```json
 {
   "params": {
     "pid": 1234,
-    "pattern": "B0 01 C3",
+    "pattern": "48 8B 4? ?F B0 01 C3",
     "module_name": "DemoApp.exe",
     "max_results": 30
   }

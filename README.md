@@ -29,7 +29,7 @@ environments.
 - Integer, float, and string value searches.
 - Persistent scan sessions with filters such as `changed`, `decreased`,
   `increased`, `eq_prev`, and more.
-- AOB scans with wildcards and preflight checks for overly broad scans.
+- AOB scans with byte-level wildcards and preflight checks for overly broad scans.
 - File-backed background jobs for long scans, with JSONL results.
 - x86-64 disassembly through Capstone.
 - Direct caller discovery by resolving `CALL rel32` targets mathematically.
@@ -197,11 +197,15 @@ Find direct callers:
 
 Bounded AOB scan:
 
+Use `??` or `?` for full-byte wildcards. Nibble wildcards are also supported:
+`4?` fixes the high nibble and `?F` fixes the low nibble. Keep tokens
+space-separated.
+
 ```json
 {
   "params": {
     "pid": 1234,
-    "pattern": "48 8B ?? ?? B0 01 C3",
+    "pattern": "48 8B 4? ?F B0 01 C3",
     "module_name": "DemoApp.exe",
     "max_results": 30
   }

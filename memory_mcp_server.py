@@ -668,17 +668,39 @@ def _resolve_pointer_offsets(
 
 def _parse_pattern(pattern_str: str) -> Tuple[bytes, bytes]:
     """
-    Parsea un AOB pattern como 'A1 ?? B2 CC ?? DD' a (bytes, mask).
-    ?? = wildcard. Retorna (pattern_bytes, mask_bytes) donde mask 0xFF = match, 0x00 = wildcard.
+    Parsea un AOB pattern como 'A1 ?? B2 4? ?F DD' a (bytes, mask).
+
+    Wildcards:
+    - ?? o ? = byte completo variable
+    - 4? = nibble alto fijo, nibble bajo variable
+    - ?F = nibble alto variable, nibble bajo fijo
+
+    Retorna (pattern_bytes, mask_bytes), donde la mascara indica que bits
+    deben compararse.
     """
     tokens = pattern_str.strip().split()
+    if not tokens:
+        raise ValueError("Patron AOB vacio")
+
     pattern = bytearray()
     mask = bytearray()
     for t in tokens:
         if t == "??" or t == "?":
             pattern.append(0)
             mask.append(0)
+        elif re.fullmatch(r"[0-9A-Fa-f]\?", t):
+            pattern.append(int(t[0], 16) << 4)
+            mask.append(0xF0)
+        elif re.fullmatch(r"\?[0-9A-Fa-f]", t):
+            pattern.append(int(t[1], 16))
+            mask.append(0x0F)
         else:
+            if "?" in t:
+                raise ValueError(
+                    f"Wildcard AOB invalido en token {t!r}. Usa bytes hex, '?', '??', '4?' o '?F'."
+                )
+            if not re.fullmatch(r"[0-9A-Fa-f]{2}", t):
+                raise ValueError(f"Token AOB invalido {t!r}. Usa bytes hex de 2 digitos, '?', '??', '4?' o '?F'.")
             pattern.append(int(t, 16))
             mask.append(0xFF)
     return bytes(pattern), bytes(mask)
@@ -706,7 +728,7 @@ def _aob_search(data: bytes, pattern: bytes, mask: bytes, max_results: Optional[
     for i in range(len(data) - plen + 1):
         found = True
         for j in range(plen):
-            if mask[j] != 0 and data[i + j] != pattern[j]:
+            if mask[j] != 0 and (data[i + j] & mask[j]) != pattern[j]:
                 found = False
                 break
         if found:
@@ -1229,6 +1251,153 @@ async def mem_read(params: ReadMemoryInput) -> str:
 
 # ---- Tool: Desensamblar memoria ----
 
+def _disassemble_x64_bytes(
+    data: bytes,
+    addr: int,
+    max_instructions: int,
+    syntax: str,
+    include_bytes: bool,
+) -> Dict[str, Any]:
+    """Disassembles an x86-64 byte buffer and returns JSON-ready data."""
+    try:
+        from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_OPT_SYNTAX_ATT, CS_OPT_SYNTAX_INTEL
+        from capstone.x86_const import X86_OP_IMM, X86_OP_MEM, X86_REG_RIP
+    except ImportError as exc:
+        raise RuntimeError("missing_dependency: capstone") from exc
+
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    cs.syntax = CS_OPT_SYNTAX_ATT if syntax.lower() == "att" else CS_OPT_SYNTAX_INTEL
+
+    instructions = []
+    last_end = addr
+    for index, insn in enumerate(cs.disasm(data, addr)):
+        if index >= max_instructions:
+            break
+
+        groups = [cs.group_name(group_id) or str(group_id) for group_id in insn.groups]
+        is_call = "call" in groups
+        is_jump = "jump" in groups
+        is_ret = "ret" in groups or insn.mnemonic.startswith("ret")
+        branch_kind = "call" if is_call else "jump" if is_jump else "ret" if is_ret else None
+
+        target = None
+        operands = []
+        rip_relative = []
+        for op in insn.operands:
+            item: Dict[str, Any] = {"type": str(op.type)}
+            if op.type == X86_OP_IMM:
+                imm = int(op.imm)
+                item["kind"] = "imm"
+                item["imm"] = imm
+                item["imm_hex"] = f"0x{imm & 0xFFFFFFFFFFFFFFFF:X}"
+                if branch_kind in ("call", "jump"):
+                    target = imm
+                    item["relative_target"] = f"0x{imm & 0xFFFFFFFFFFFFFFFF:X}"
+                    item["relative_delta"] = imm - (insn.address + insn.size)
+            elif op.type == X86_OP_MEM:
+                item["kind"] = "mem"
+                item["disp"] = int(op.mem.disp)
+                item["scale"] = int(op.mem.scale)
+                if op.mem.base:
+                    item["base"] = insn.reg_name(op.mem.base)
+                if op.mem.index:
+                    item["index"] = insn.reg_name(op.mem.index)
+                if op.mem.base == X86_REG_RIP:
+                    rip_target = insn.address + insn.size + op.mem.disp
+                    item["rip_relative_target"] = f"0x{rip_target:X}"
+                    rip_relative.append({
+                        "target": f"0x{rip_target:X}",
+                        "disp": op.mem.disp,
+                    })
+            else:
+                item["kind"] = "reg" if getattr(op, "reg", 0) else "other"
+                if getattr(op, "reg", 0):
+                    item["reg"] = insn.reg_name(op.reg)
+            operands.append(item)
+
+        record: Dict[str, Any] = {
+            "address": f"0x{insn.address:X}",
+            "address_int": insn.address,
+            "size": insn.size,
+            "mnemonic": insn.mnemonic,
+            "op_str": insn.op_str,
+            "text": f"{insn.mnemonic} {insn.op_str}".strip(),
+            "groups": groups,
+            "branch": branch_kind,
+            "operands": operands,
+        }
+        if include_bytes:
+            record["bytes"] = " ".join(f"{b:02X}" for b in insn.bytes)
+        if target is not None:
+            record["target"] = f"0x{target & 0xFFFFFFFFFFFFFFFF:X}"
+            record["target_int"] = target
+        if rip_relative:
+            record["rip_relative"] = rip_relative
+
+        instructions.append(record)
+        last_end = insn.address + insn.size
+
+    return {
+        "instruction_count": len(instructions),
+        "max_instructions": max_instructions,
+        "next_address": f"0x{last_end:X}",
+        "instructions": instructions,
+    }
+
+
+def _read_for_disassemble(
+    handle: wt.HANDLE,
+    addr: int,
+    size: int,
+    allow_partial: bool,
+) -> Tuple[bytes, Dict[str, Any]]:
+    if allow_partial:
+        read_result = _read_bytes_best_effort(handle, addr, size)
+        return read_result["data"], read_result
+
+    data = _read_bytes(handle, addr, size)
+    return data, {
+        "bytes_read": len(data),
+        "complete": len(data) == size,
+        "segments": [{"address": f"0x{addr:X}", "size": len(data), "requested": size, "partial": False}],
+        "errors": [],
+    }
+
+
+def _disassemble_range(
+    pid: int,
+    handle: wt.HANDLE,
+    address: str,
+    size: int,
+    max_instructions: int,
+    syntax: str,
+    include_bytes: bool,
+    allow_partial: bool,
+) -> Dict[str, Any]:
+    addr = _parse_address_expression(address, pid)
+    data, read_result = _read_for_disassemble(handle, addr, size, allow_partial)
+    result: Dict[str, Any] = {
+        "address": f"0x{addr:X}",
+        "bytes_requested": size,
+        "bytes_read": len(data),
+        "complete": read_result.get("complete", len(data) == size),
+        "read_segments": read_result.get("segments", []),
+        "read_errors": read_result.get("errors", []),
+    }
+    if not data:
+        result.update({
+            "error": "read_failed",
+            "message": "No bytes could be read from the requested address.",
+            "instruction_count": 0,
+            "instructions": [],
+        })
+        return result
+
+    result.update(_disassemble_x64_bytes(data, addr, max_instructions, syntax, include_bytes))
+    return result
+
+
 class DisassembleInput(BaseModel):
     """Input para desensamblar bytes x86-64 con Capstone."""
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1239,6 +1408,7 @@ class DisassembleInput(BaseModel):
     max_instructions: int = Field(default=64, description="Maximo de instrucciones", ge=1, le=2000)
     syntax: str = Field(default="intel", description="intel o att")
     include_bytes: bool = Field(default=True, description="Incluye bytes de cada instruccion")
+    allow_partial: bool = Field(default=True, description="Si True, devuelve desensamblado parcial si ReadProcessMemory falla a mitad")
 
 
 @mcp.tool(
@@ -1258,105 +1428,119 @@ async def mem_disassemble(params: DisassembleInput) -> str:
     relativos y targets RIP-relative para referencias tipo [rip+disp].
     """
     try:
-        try:
-            from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_OPT_SYNTAX_ATT, CS_OPT_SYNTAX_INTEL
-            from capstone.x86_const import X86_OP_IMM, X86_OP_MEM, X86_REG_RIP
-        except ImportError:
+        handle = _get_handle(params.pid)
+        result = _disassemble_range(
+            params.pid,
+            handle,
+            params.address,
+            params.size,
+            params.max_instructions,
+            params.syntax,
+            params.include_bytes,
+            params.allow_partial,
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        if "missing_dependency: capstone" in str(e):
             return json.dumps({
                 "error": "missing_dependency",
                 "dependency": "capstone",
                 "install": "pip install -r requirements.txt",
             }, indent=2)
+        return json.dumps({
+            "error": "disassemble_failed",
+            "message": str(e),
+        }, indent=2, ensure_ascii=False)
 
-        addr = _parse_address_expression(params.address, params.pid)
+
+class DisassembleBatchItem(BaseModel):
+    """Un rango para mem_disassemble_batch."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    address: str = Field(..., description="Direccion o expresion tipo modulo+offset")
+    size: int = Field(default=128, description="Bytes a leer y desensamblar", ge=1, le=65536)
+    max_instructions: int = Field(default=64, description="Maximo de instrucciones para este rango", ge=1, le=2000)
+    label: Optional[str] = Field(default=None, description="Etiqueta opcional para identificar el rango")
+
+
+class DisassembleBatchInput(BaseModel):
+    """Input para desensamblar varios rangos en una sola llamada MCP."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    pid: int = Field(..., description="PID del proceso", ge=1)
+    ranges: List[DisassembleBatchItem] = Field(..., description="Rangos a desensamblar", min_length=1, max_length=32)
+    syntax: str = Field(default="intel", description="intel o att")
+    include_bytes: bool = Field(default=True, description="Incluye bytes de cada instruccion")
+    allow_partial: bool = Field(default=True, description="Si True, devuelve resultados parciales por rango")
+    max_total_bytes: int = Field(default=65536, description="Limite total de bytes del batch", ge=1, le=1048576)
+
+
+@mcp.tool(
+    name="mem_disassemble_batch",
+    annotations={
+        "title": "Desensamblar varios rangos",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+async def mem_disassemble_batch(params: DisassembleBatchInput) -> str:
+    """Desensambla varios rangos x86-64 en una sola llamada.
+
+    Recomendado para agentes cuando necesitan inspeccionar varias direcciones
+    cercanas, porque evita emitir muchas tool calls consecutivas.
+    """
+    try:
+        total_bytes = sum(item.size for item in params.ranges)
+        if total_bytes > params.max_total_bytes:
+            return json.dumps({
+                "error": "batch_too_large",
+                "requested_bytes": total_bytes,
+                "max_total_bytes": params.max_total_bytes,
+                "hint": "Reduce ranges or increase max_total_bytes deliberately.",
+            }, indent=2, ensure_ascii=False)
+
         handle = _get_handle(params.pid)
-        data = _read_bytes(handle, addr, params.size)
-
-        cs = Cs(CS_ARCH_X86, CS_MODE_64)
-        cs.detail = True
-        cs.syntax = CS_OPT_SYNTAX_ATT if params.syntax.lower() == "att" else CS_OPT_SYNTAX_INTEL
-
-        instructions = []
-        last_end = addr
-        for index, insn in enumerate(cs.disasm(data, addr)):
-            if index >= params.max_instructions:
-                break
-
-            groups = [cs.group_name(group_id) or str(group_id) for group_id in insn.groups]
-            is_call = "call" in groups
-            is_jump = "jump" in groups
-            is_ret = "ret" in groups or insn.mnemonic.startswith("ret")
-            branch_kind = "call" if is_call else "jump" if is_jump else "ret" if is_ret else None
-
-            target = None
-            operands = []
-            rip_relative = []
-            for op in insn.operands:
-                item: Dict[str, Any] = {"type": str(op.type)}
-                if op.type == X86_OP_IMM:
-                    imm = int(op.imm)
-                    item["kind"] = "imm"
-                    item["imm"] = imm
-                    item["imm_hex"] = f"0x{imm & 0xFFFFFFFFFFFFFFFF:X}"
-                    if branch_kind in ("call", "jump"):
-                        target = imm
-                        item["relative_target"] = f"0x{imm & 0xFFFFFFFFFFFFFFFF:X}"
-                        item["relative_delta"] = imm - (insn.address + insn.size)
-                elif op.type == X86_OP_MEM:
-                    item["kind"] = "mem"
-                    item["disp"] = int(op.mem.disp)
-                    item["scale"] = int(op.mem.scale)
-                    if op.mem.base:
-                        item["base"] = insn.reg_name(op.mem.base)
-                    if op.mem.index:
-                        item["index"] = insn.reg_name(op.mem.index)
-                    if op.mem.base == X86_REG_RIP:
-                        rip_target = insn.address + insn.size + op.mem.disp
-                        item["rip_relative_target"] = f"0x{rip_target:X}"
-                        rip_relative.append({
-                            "target": f"0x{rip_target:X}",
-                            "disp": op.mem.disp,
-                        })
-                else:
-                    item["kind"] = "reg" if getattr(op, "reg", 0) else "other"
-                    if getattr(op, "reg", 0):
-                        item["reg"] = insn.reg_name(op.reg)
-                operands.append(item)
-
-            record: Dict[str, Any] = {
-                "address": f"0x{insn.address:X}",
-                "address_int": insn.address,
-                "size": insn.size,
-                "mnemonic": insn.mnemonic,
-                "op_str": insn.op_str,
-                "text": f"{insn.mnemonic} {insn.op_str}".strip(),
-                "groups": groups,
-                "branch": branch_kind,
-                "operands": operands,
-            }
-            if params.include_bytes:
-                record["bytes"] = " ".join(f"{b:02X}" for b in insn.bytes)
-            if target is not None:
-                record["target"] = f"0x{target & 0xFFFFFFFFFFFFFFFF:X}"
-                record["target_int"] = target
-            if rip_relative:
-                record["rip_relative"] = rip_relative
-
-            instructions.append(record)
-            last_end = insn.address + insn.size
+        results = []
+        for item in params.ranges:
+            try:
+                result = _disassemble_range(
+                    params.pid,
+                    handle,
+                    item.address,
+                    item.size,
+                    item.max_instructions,
+                    params.syntax,
+                    params.include_bytes,
+                    params.allow_partial,
+                )
+                if item.label:
+                    result["label"] = item.label
+                results.append(result)
+            except Exception as exc:
+                results.append({
+                    "address": item.address,
+                    "label": item.label,
+                    "error": "disassemble_failed",
+                    "message": str(exc),
+                    "instruction_count": 0,
+                    "instructions": [],
+                })
 
         return json.dumps({
-            "address": f"0x{addr:X}",
-            "bytes_requested": params.size,
-            "bytes_read": len(data),
-            "instruction_count": len(instructions),
-            "max_instructions": params.max_instructions,
-            "next_address": f"0x{last_end:X}",
-            "instructions": instructions,
+            "pid": params.pid,
+            "range_count": len(params.ranges),
+            "total_bytes_requested": total_bytes,
+            "results": results,
         }, indent=2, ensure_ascii=False)
 
     except Exception as e:
-        return f"Error desensamblando memoria: {e}"
+        return json.dumps({
+            "error": "disassemble_batch_failed",
+            "message": str(e),
+        }, indent=2, ensure_ascii=False)
 
 
 # ---- Tool: Encontrar callers directos ----
@@ -2428,7 +2612,7 @@ class AOBScanInput(BaseModel):
     pid: int = Field(..., description="PID del proceso", ge=1)
     pattern: str = Field(
         ...,
-        description="Patrón AOB con wildcards. Ej: 'A1 ?? ?? ?? ?? 8B 0D' donde ?? = wildcard"
+        description="Patron AOB con wildcards. Ej: 'A1 ?? 4? ?F 8B 0D'. Soporta ?, ??, 4? y ?F."
     )
     module_name: Optional[str] = Field(
         default=None,
@@ -2455,7 +2639,8 @@ async def mem_aob_scan(params: AOBScanInput) -> str:
 
     Equivalente al 'AOB Scan' de Cheat Engine. Ideal para encontrar
     instrucciones o patrones de código que llevan a estructuras de datos.
-    Usa ?? como wildcard para bytes variables.
+    Usa ?? o ? para bytes variables completos. Tambien soporta wildcards por
+    nibble: 4? fija el nibble alto y ?F fija el nibble bajo.
 
     Ej: 'A1 ?? ?? ?? ?? 8B 0D' busca una instrucción mov eax,[???]; mov ecx,[...]
     Los bytes entre ?? varían entre versiones del ejecutable.
@@ -2533,7 +2718,7 @@ class AOBScanFileStartInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     pid: int = Field(..., description="PID del proceso", ge=1)
-    pattern: str = Field(..., description="Patron AOB con wildcards. Ej: 'B0 01 C3' o '48 8B ?? ??'")
+    pattern: str = Field(..., description="Patron AOB con wildcards. Ej: 'B0 01 C3', '48 8B ?? ??', '48 8B 4? ?F'. Soporta ?, ??, 4? y ?F.")
     module_name: Optional[str] = Field(default=None, description="Modulo a escanear. Ej: DemoApp.exe")
     region_start: Optional[str] = Field(default=None, description="Inicio del rango; admite modulo+offset")
     region_end: Optional[str] = Field(default=None, description="Fin del rango; admite modulo+offset")
