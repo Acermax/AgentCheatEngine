@@ -395,6 +395,50 @@ def _module_executable_regions(handle: wt.HANDLE, module: Dict[str, Any]) -> Lis
     return regions
 
 
+def _clip_ranges_to_readable_regions(
+    handle: wt.HANDLE,
+    ranges: List[Dict[str, Any]],
+    module: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Recorta rangos logicos contra regiones legibles de VirtualQueryEx."""
+    readable_regions = _memory_regions(handle, readable_only=True)
+    module_base = int(module["base"]) if module else 0
+    clipped: List[Dict[str, Any]] = []
+
+    for source in ranges:
+        source_base = int(source["base"])
+        source_size = int(source["size"])
+        source_end = source_base + source_size
+        for region in readable_regions:
+            region_base = int(region["base"])
+            region_size = int(region["size"])
+            region_end = region_base + region_size
+            if region_end <= source_base or region_base >= source_end:
+                continue
+
+            start = max(source_base, region_base)
+            end = min(source_end, region_end)
+            if end <= start:
+                continue
+
+            item = dict(source)
+            item.update({
+                "base": start,
+                "base_hex": f"0x{start:X}",
+                "size": end - start,
+                "size_hex": f"0x{end - start:X}",
+                "rva": start - module_base if module else source.get("rva", start - source_base),
+                "rva_hex": f"0x{start - module_base:X}" if module else f"0x{start - source_base:X}",
+                "source_base": source.get("base_hex", f"0x{source_base:X}"),
+                "source_size": source.get("size_hex", f"0x{source_size:X}"),
+                "protect": region.get("protect", "memory"),
+            })
+            clipped.append(item)
+
+    clipped.sort(key=lambda item: int(item["base"]))
+    return clipped
+
+
 def _protection_str(protect: int) -> str:
     """Convierte flags de protección a string legible."""
     flags = []
@@ -1745,7 +1789,7 @@ async def mem_find_callers(params: FindCallersInput) -> str:
             end = _parse_address_expression(params.scan_end, params.pid)
             if end <= start:
                 return json.dumps({"error": "scan_end debe ser mayor que scan_start"})
-            scan_regions = [{
+            logical_regions = [{
                 "name": "manual",
                 "base": start,
                 "base_hex": f"0x{start:X}",
@@ -1754,16 +1798,23 @@ async def mem_find_callers(params: FindCallersInput) -> str:
                 "size": end - start,
                 "size_hex": f"0x{end - start:X}",
             }]
+            scan_regions = _clip_ranges_to_readable_regions(handle, logical_regions, module)
         else:
             try:
                 sections = _module_code_sections(handle, module)
+                using_pe_sections = True
             except Exception:
                 sections = _module_executable_regions(handle, module)
+                using_pe_sections = False
             wanted_sections = {name.lower() for name in params.section_names}
-            scan_regions = [
-                section for section in sections
-                if not wanted_sections or section["name"].lower() in wanted_sections
-            ]
+            if using_pe_sections or wanted_sections != {".text"}:
+                selected_regions = [
+                    section for section in sections
+                    if not wanted_sections or section["name"].lower() in wanted_sections
+                ]
+            else:
+                selected_regions = sections
+            scan_regions = _clip_ranges_to_readable_regions(handle, selected_regions, module)
             if not scan_regions:
                 return json.dumps({
                     "error": "no_sections_selected",
@@ -1779,6 +1830,7 @@ async def mem_find_callers(params: FindCallersInput) -> str:
                         }
                         for section in sections
                     ],
+                    "hint": "Las secciones existen, pero ninguna se solapo con regiones legibles de VirtualQueryEx. Prueba scan_start/scan_end o revisa permisos/admin.",
                 }, indent=2, ensure_ascii=False)
 
         preflight = _too_expensive_scan_response(
@@ -1794,6 +1846,7 @@ async def mem_find_callers(params: FindCallersInput) -> str:
         counts: Dict[str, int] = {f"0x{target:X}": 0 for target in target_set}
         bytes_scanned = 0
         read_errors = 0
+        read_error_details: List[Dict[str, Any]] = []
         chunk_size = params.chunk_mb * 1024 * 1024
         seen_sites = set()
 
@@ -1809,8 +1862,16 @@ async def mem_find_callers(params: FindCallersInput) -> str:
                 try:
                     data = _read_bytes(handle, read_addr, read_size)
                     bytes_scanned += len(data)
-                except Exception:
+                except Exception as exc:
                     read_errors += 1
+                    if len(read_error_details) < 20:
+                        read_error_details.append({
+                            "address": f"0x{read_addr:X}",
+                            "size": read_size,
+                            "region": region.get("name"),
+                            "protect": region.get("protect"),
+                            "error": str(exc),
+                        })
                     cursor += min(chunk_size, region_size - cursor)
                     continue
 
@@ -1903,11 +1964,16 @@ async def mem_find_callers(params: FindCallersInput) -> str:
                     "base": region.get("base_hex", f"0x{int(region['base']):X}"),
                     "size": region.get("size_hex", f"0x{int(region['size']):X}"),
                     "rva": region.get("rva_hex"),
+                    "protect": region.get("protect"),
+                    "source_base": region.get("source_base"),
+                    "source_size": region.get("source_size"),
                 }
                 for region in scan_regions
             ],
+            "bytes_scanned": bytes_scanned,
             "bytes_scanned_mb": round(bytes_scanned / 1048576, 2),
             "read_errors": read_errors,
+            "read_error_details": read_error_details,
             "result_count": len(results),
             "truncated": len(results) >= params.max_results,
             "results": results,
