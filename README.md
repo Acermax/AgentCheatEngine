@@ -14,7 +14,9 @@ environments.
 
 ## Contents
 
-- `memory_mcp_server.py`: main MCP server.
+- `memory_mcp_server.py`: compatibility entrypoint for existing MCP configs.
+- `agentcheatengine/`: internal server package with runtime helpers and tool modules.
+- `agentcheatengine/tools/`: grouped MCP tool registrations.
 - `requirements.txt`: Python dependencies.
 - `install.bat`: quick Windows installer.
 - `docs/agent_usage.md`: examples and operational notes for MCP clients.
@@ -35,6 +37,8 @@ environments.
 - x86-64 disassembly through Capstone.
 - Thread snapshots with registers, stack bytes, and disassembly at RIP without
   attaching a debugger, with live-context fallback when suspension is denied.
+- Debugger sessions with software breakpoints, event wait/continue, and safe
+  detach that restores breakpoint bytes.
 - Direct caller discovery by resolving `CALL rel32` targets mathematically.
 - Memory comparison against previous byte snapshots.
 - Controlled byte writes through `mem_write` for authorized use cases.
@@ -108,6 +112,15 @@ Correct:
 }
 ```
 
+If your MCP client exposes the schema as `params: string`, pass the same JSON
+payload serialized into that string:
+
+```json
+{
+  "params": "{\"pid\":1234,\"address\":\"DemoApp.exe+0x123456\",\"size\":128}"
+}
+```
+
 Incorrect:
 
 ```json
@@ -131,6 +144,11 @@ See [docs/agent_usage.md](docs/agent_usage.md) for more examples.
 | `mem_read` | Read bytes and return a hexdump plus basic interpretation. |
 | `mem_disassemble` | Disassemble x86-64 code with Capstone. |
 | `mem_thread_snapshot` | Capture thread registers, stack, and RIP disassembly without debugger attach. |
+| `mem_debug_attach` | Attach a Win32 debugger session to a process. |
+| `mem_debug_set_breakpoint` | Set a persistent software breakpoint with `0xCC`. |
+| `mem_debug_wait_event` | Wait for a debugger event and return context, stack, and disassembly. |
+| `mem_debug_continue` | Continue the pending debugger event. |
+| `mem_debug_detach` | Restore breakpoints and detach the debugger; refuses unsafe second-chance continuation by default. |
 | `mem_find_callers` | Find direct calls to target functions. |
 | `mem_read_struct` | Read multiple typed fields from a base address. |
 | `mem_follow_pointers` | Traverse pointer chains. |
@@ -224,6 +242,36 @@ Thread snapshot:
 }
 ```
 
+Debugger breakpoint:
+
+```json
+{
+  "params": {
+    "pid": 1234
+  }
+}
+```
+
+Tool: `mem_debug_attach`.
+
+```json
+{
+  "params": {
+    "session_id": "abc123def456",
+    "address": "DemoApp.exe+0x123456",
+    "label": "interesting_call"
+  }
+}
+```
+
+Tool: `mem_debug_set_breakpoint`. Then use `mem_debug_wait_event`,
+`mem_debug_continue`, and `mem_debug_detach`.
+
+If `mem_debug_continue` or `mem_debug_detach` reports
+`pending_second_chance_exception`, inspect the event before forcing anything.
+`DBG_EXCEPTION_NOT_HANDLED` can terminate the target, while `DBG_CONTINUE` can
+reexecute the faulting instruction and leave the target hung or crashed.
+
 Find direct callers:
 
 ```json
@@ -302,6 +350,8 @@ Tool: `mem_scan_file_status`.
 ## Common Errors
 
 - `params Field required`: wrap arguments inside `params`.
+- Schema says `params: string`: JSON-serialize the same payload inside the
+  string, for example `{"params":"{\"pid\":1234}"}`.
 - `scan_too_broad`: narrow the module or range before retrying.
 - `ERROR_PARTIAL_COPY` / WinError 299: the read crossed an unreadable or
   changing page; reduce `size` or align the read.
@@ -315,6 +365,7 @@ Check syntax:
 
 ```bat
 python -m py_compile memory_mcp_server.py
+python -m compileall agentcheatengine
 ```
 
 The repository ignores `venv/`, `__pycache__/`, `.pytest_cache/`, and temporary

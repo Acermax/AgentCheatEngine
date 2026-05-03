@@ -43,6 +43,17 @@ Do not call it like this:
 If you get a validation error saying `params Field required`, fix only the
 wrapper. Do not change the semantic query.
 
+Some clients expose the tool schema as `params: string` instead of a nested
+object. In that case, JSON-serialize the same payload into the string:
+
+```json
+{
+  "params": "{\"pid\":1234,\"address\":\"DemoApp.exe+0x123456\",\"size\":128}"
+}
+```
+
+Follow the schema the client shows. Do not change the actual memory query.
+
 ## 2. Common Workflows
 
 ### Find A Process
@@ -168,6 +179,89 @@ resumes the thread in a `finally` block. If suspension is denied, it can fall
 back to live `GetThreadContext` without pausing the thread; those records are
 marked with `live_context_without_suspend=true`. It does not use
 `DebugActiveProcess` and does not set breakpoints.
+
+### Debugger Breakpoints
+
+Use debugger tools only when you need direct execution proof. A pending debug
+event stops the target process until you continue or detach.
+
+Attach:
+
+```json
+{
+  "params": {
+    "pid": 1234
+  }
+}
+```
+
+Tool: `mem_debug_attach`.
+
+Set a software breakpoint:
+
+```json
+{
+  "params": {
+    "session_id": "abc123def456",
+    "address": "DemoApp.exe+0x123456",
+    "label": "interesting_call"
+  }
+}
+```
+
+Tool: `mem_debug_set_breakpoint`. It saves the original byte, writes `0xCC`,
+and flushes the instruction cache.
+
+Wait:
+
+```json
+{
+  "params": {
+    "session_id": "abc123def456",
+    "timeout_ms": 10000,
+    "stack_bytes": 128,
+    "disasm_bytes": 96
+  }
+}
+```
+
+Tool: `mem_debug_wait_event`. For breakpoint hits, disassembly is shown from
+the breakpoint address with the original byte restored in the local decode
+buffer.
+
+Continue:
+
+```json
+{
+  "params": {
+    "session_id": "abc123def456",
+    "event_id": 34
+  }
+}
+```
+
+Tool: `mem_debug_continue`. For software breakpoints, it restores the original
+byte, rewinds `RIP`, enables trap flag for one internal single-step, reinserts
+`0xCC`, then continues.
+
+Detach:
+
+```json
+{
+  "params": {
+    "session_id": "abc123def456"
+  }
+}
+```
+
+Tool: `mem_debug_detach`. Always detach before ending the task.
+
+If continue or detach returns `pending_second_chance_exception`, the MCP refused
+to continue a non-owned second-chance exception. There is no generic safe choice
+at that point: `DBG_EXCEPTION_NOT_HANDLED` can terminate the target process, and
+`DBG_CONTINUE` can reexecute the same faulting instruction and leave the target
+looping, hung, or crashed. Inspect the event and ask for human confirmation
+before forcing the operation with `allow_second_chance_continue=true`.
 
 ### Find Direct Callers
 
@@ -312,6 +406,8 @@ in `results_path`.
 ## 5. Error Handling
 
 - `params Field required`: wrap arguments under `params`.
+- Tool schema shows `params: string`: JSON-serialize the payload inside that
+  string, for example `{"params":"{\"pid\":1234}"}`.
 - `scan_too_broad`: narrow the scan; do not retry unchanged.
 - `ERROR_PARTIAL_COPY` / WinError 299: the read crossed into an unreadable or changing page. `mem_read` returns partial bytes by default with `complete=false`; retry with a smaller/page-aligned `size` when exact bytes are required.
 - `Access denied` or WinError 5: run the MCP host/client as administrator.
