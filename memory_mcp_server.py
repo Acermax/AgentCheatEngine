@@ -751,15 +751,46 @@ def _scan_regions(
     region_end: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Construye la lista de regiones legibles que participaran en un escaneo."""
+    regions = []
+
     if module_name:
         matches = [m for m in _get_modules(pid) if module_name.lower() in m["name"].lower()]
         if not matches:
             raise ValueError(f"Modulo no encontrado: {module_name}")
-        return [{"base": int(m["base"]), "size": int(m["size"]), "source": m["name"]} for m in matches]
+
+        readable_regions = _memory_regions(handle, readable_only=True)
+        requested_start = _parse_address_expression(region_start, pid) if region_start else None
+        requested_end = _parse_address_expression(region_end, pid) if region_end else None
+
+        for module in matches:
+            module_base = int(module["base"])
+            module_end = module_base + int(module["size"])
+            start = max(module_base, requested_start) if requested_start is not None else module_base
+            end = min(module_end, requested_end) if requested_end is not None else module_end
+            if end <= start:
+                continue
+
+            for region in readable_regions:
+                base = int(region["base"])
+                size = int(region["size"])
+                if base + size <= start or base >= end:
+                    continue
+                clipped_start = max(base, start)
+                clipped_end = min(base + size, end)
+                if clipped_end > clipped_start:
+                    regions.append({
+                        "base": clipped_start,
+                        "size": clipped_end - clipped_start,
+                        "source": module["name"],
+                        "module": module["name"],
+                        "module_base": module.get("base_hex", f"0x{module_base:X}"),
+                        "module_rva": f"0x{clipped_start - module_base:X}",
+                        "protect": region.get("protect", "memory"),
+                    })
+        return regions
 
     start = _parse_address_expression(region_start, pid) if region_start else 0
     end = _parse_address_expression(region_end, pid) if region_end else 0x7FFFFFFFFFFF
-    regions = []
     for region in _memory_regions(handle, readable_only=True):
         base = int(region["base"])
         size = int(region["size"])
