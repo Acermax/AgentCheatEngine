@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+artifacts/scan_jobs/
+AGENTS.md
+agents.md
