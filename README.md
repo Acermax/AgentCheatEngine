@@ -23,7 +23,8 @@ environments.
 
 - Process, module, and memory-region enumeration.
 - Memory reads with basic interpretation and hexdumps.
-- Address expressions such as `DemoApp.exe+0x414F6D0+0x4`.
+- Address expressions such as `DemoApp.exe+0x414F6D0+0x4`, plus a resolver tool
+  that normalizes VA/RVA/module metadata for agents.
 - Typed structure reads and pointer-chain traversal.
 - Batch reads to reduce MCP round trips.
 - Integer, float, and string value searches.
@@ -123,6 +124,7 @@ See [docs/agent_usage.md](docs/agent_usage.md) for more examples.
 | --- | --- |
 | `mem_list_processes` | List processes with an optional name filter. |
 | `mem_get_modules` | List loaded modules and base addresses. |
+| `mem_resolve_address` | Normalize address expressions to VA plus module/RVA metadata. |
 | `mem_memory_map` | Enumerate readable regions with `VirtualQueryEx`. |
 | `mem_read` | Read bytes and return a hexdump plus basic interpretation. |
 | `mem_disassemble` | Disassemble x86-64 code with Capstone. |
@@ -165,6 +167,29 @@ Read memory:
     "address": "DemoApp.exe+0x414F6D0+0x4",
     "size": 64,
     "interpret": true
+  }
+}
+```
+
+Resolve an address without reading memory:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "address": "DemoApp.exe+0x414F6D0+0x4"
+  }
+}
+```
+
+Resolve an RVA relative to a module:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "address": "0x4630",
+    "module_name": "DemoApp.exe"
   }
 }
 ```

@@ -70,6 +70,33 @@ Use with `mem_list_processes`.
 
 Use with `mem_get_modules`.
 
+### Resolve Address
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "address": "DemoApp.exe+0x414F6D0+0x4"
+  }
+}
+```
+
+Use with `mem_resolve_address` to normalize an expression to an absolute
+address plus module/RVA metadata. This tool does not read memory and does not
+dereference pointers.
+
+If you have an RVA and want it interpreted relative to a module:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "address": "0x4630",
+    "module_name": "DemoApp.exe"
+  }
+}
+```
+
 ### Read Memory
 
 ```json
@@ -279,4 +306,5 @@ DemoApp.exe+0x414F6D0+0x4
 ExampleModule.dll-0x20
 ```
 
-Use module expressions instead of manually adding module bases.
+Use module expressions instead of manually adding module bases. When in doubt,
+call `mem_resolve_address` first and use its `absolute` result in later tools.

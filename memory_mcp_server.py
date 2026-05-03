@@ -1174,6 +1174,118 @@ async def mem_get_modules(params: GetModulesInput) -> str:
         return f"Error obteniendo módulos: {e}"
 
 
+# ---- Tool: Resolver direccion ----
+
+class ResolveAddressInput(BaseModel):
+    """Input para normalizar una expresion de direccion."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    pid: int = Field(..., description="PID del proceso", ge=1)
+    address: str = Field(..., description="Direccion absoluta o expresion tipo modulo.exe+0xRVA+0xoffset")
+    module_name: Optional[str] = Field(
+        default=None,
+        description="Modulo opcional para interpretar direcciones pequenas como RVA. Ej: address='0x4630', module_name='DemoApp.exe'",
+    )
+
+
+def _module_metadata_for_address(pid: int, address: int) -> Optional[Dict[str, Any]]:
+    for module in _get_modules(pid):
+        base = int(module["base"])
+        size = int(module["size"])
+        if base <= address < base + size:
+            return module
+    return None
+
+
+def _address_resolution_payload(
+    expression: str,
+    absolute: int,
+    module: Optional[Dict[str, Any]],
+    resolved_as: str,
+    input_module_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "expression": expression,
+        "absolute": f"0x{absolute:X}",
+        "absolute_int": absolute,
+        "inside_module": module is not None,
+        "resolved_as": resolved_as,
+        "note": "Address resolution only normalizes arithmetic/module expressions; it does not read memory or dereference pointers.",
+    }
+    if input_module_name:
+        payload["input_module_name"] = input_module_name
+
+    if module is None:
+        payload.update({
+            "module": None,
+            "module_base": None,
+            "module_size": None,
+            "module_path": None,
+            "rva": None,
+        })
+        return payload
+
+    module_base = int(module["base"])
+    payload.update({
+        "module": module["name"],
+        "module_base": module.get("base_hex", f"0x{module_base:X}"),
+        "module_size": module.get("size_hex", f"0x{int(module['size']):X}"),
+        "module_path": module.get("path", ""),
+        "rva": f"0x{absolute - module_base:X}",
+    })
+    return payload
+
+
+@mcp.tool(
+    name="mem_resolve_address",
+    annotations={
+        "title": "Resolver direccion",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+async def mem_resolve_address(params: ResolveAddressInput) -> str:
+    """Normaliza una expresion de direccion a VA absoluta y metadata de modulo.
+
+    No lee memoria y no dereferencia punteros. Sirve para que agentes resuelvan
+    expresiones como DemoApp.exe+0x414F6D0+0x4 sin hacer matematicas manuales.
+    Si `module_name` se proporciona y `address` resuelve a un valor dentro del
+    tamano del modulo, se trata como RVA de ese modulo.
+    """
+    try:
+        parsed = _parse_address_expression(params.address, params.pid)
+        resolved_as = "address_expression"
+
+        if params.module_name:
+            module = _find_module(params.pid, params.module_name, None)
+            module_base = int(module["base"])
+            module_size = int(module["size"])
+            if 0 <= parsed < module_size:
+                absolute = module_base + parsed
+                resolved_as = "module_rva"
+                return json.dumps(
+                    _address_resolution_payload(params.address, absolute, module, resolved_as, params.module_name),
+                    indent=2,
+                    ensure_ascii=False,
+                )
+
+        absolute = parsed
+        module = _module_metadata_for_address(params.pid, absolute)
+        return json.dumps(
+            _address_resolution_payload(params.address, absolute, module, resolved_as, params.module_name),
+            indent=2,
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        return json.dumps({
+            "error": "resolve_address_failed",
+            "expression": params.address,
+            "message": str(e),
+        }, indent=2, ensure_ascii=False)
+
+
 # ---- Tool: Leer memoria ----
 
 class ReadMemoryInput(BaseModel):
