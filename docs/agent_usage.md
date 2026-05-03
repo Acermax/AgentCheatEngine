@@ -145,6 +145,30 @@ calls in one turn:
 }
 ```
 
+### Thread Snapshot
+
+Use `mem_thread_snapshot` when you need live execution context without attaching
+a debugger:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "max_threads": 8,
+    "stack_bytes": 128,
+    "disasm_bytes": 96,
+    "max_instructions": 24
+  }
+}
+```
+
+The tool suspends each selected thread when permissions allow, calls
+`GetThreadContext`, reads stack bytes from `RSP`, disassembles from `RIP`, and
+resumes the thread in a `finally` block. If suspension is denied, it can fall
+back to live `GetThreadContext` without pausing the thread; those records are
+marked with `live_context_without_suspend=true`. It does not use
+`DebugActiveProcess` and does not set breakpoints.
+
 ### Find Direct Callers
 
 Do not scan for bare `E8`; it is too noisy. Use `mem_find_callers`, which

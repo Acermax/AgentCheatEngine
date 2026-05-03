@@ -33,6 +33,8 @@ environments.
 - AOB scans with byte-level wildcards and preflight checks for overly broad scans.
 - File-backed background jobs for long scans, with JSONL results.
 - x86-64 disassembly through Capstone.
+- Thread snapshots with registers, stack bytes, and disassembly at RIP without
+  attaching a debugger, with live-context fallback when suspension is denied.
 - Direct caller discovery by resolving `CALL rel32` targets mathematically.
 - Memory comparison against previous byte snapshots.
 - Controlled byte writes through `mem_write` for authorized use cases.
@@ -128,6 +130,7 @@ See [docs/agent_usage.md](docs/agent_usage.md) for more examples.
 | `mem_memory_map` | Enumerate readable regions with `VirtualQueryEx`. |
 | `mem_read` | Read bytes and return a hexdump plus basic interpretation. |
 | `mem_disassemble` | Disassemble x86-64 code with Capstone. |
+| `mem_thread_snapshot` | Capture thread registers, stack, and RIP disassembly without debugger attach. |
 | `mem_find_callers` | Find direct calls to target functions. |
 | `mem_read_struct` | Read multiple typed fields from a base address. |
 | `mem_follow_pointers` | Traverse pointer chains. |
@@ -204,6 +207,19 @@ Disassemble:
     "size": 160,
     "max_instructions": 40,
     "syntax": "intel"
+  }
+}
+```
+
+Thread snapshot:
+
+```json
+{
+  "params": {
+    "pid": 1234,
+    "max_threads": 8,
+    "stack_bytes": 128,
+    "disasm_bytes": 96
   }
 }
 ```

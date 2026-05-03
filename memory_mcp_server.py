@@ -51,6 +51,10 @@ PROCESS_ALL_ACCESS = 0x001FFFFF
 ERROR_PARTIAL_COPY = 299
 DEFAULT_PAGE_SIZE = 0x1000
 
+THREAD_SUSPEND_RESUME = 0x0002
+THREAD_GET_CONTEXT = 0x0008
+THREAD_QUERY_INFORMATION = 0x0040
+
 MEM_COMMIT = 0x1000
 MEM_FREE = 0x10000
 MEM_RESERVE = 0x2000
@@ -75,6 +79,12 @@ READABLE_PROTECTIONS = (
 
 TH32CS_SNAPMODULE = 0x00000008
 TH32CS_SNAPMODULE32 = 0x00000010
+TH32CS_SNAPTHREAD = 0x00000004
+
+CONTEXT_AMD64 = 0x00100000
+CONTEXT_CONTROL = CONTEXT_AMD64 | 0x00000001
+CONTEXT_INTEGER = CONTEXT_AMD64 | 0x00000002
+CONTEXT_CONTROL_INTEGER = CONTEXT_CONTROL | CONTEXT_INTEGER
 
 # ctypes handles
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -104,9 +114,99 @@ class MODULEENTRY32(ctypes.Structure):
         ("szExePath", ctypes.c_char * 260),
     ]
 
+class THREADENTRY32(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wt.DWORD),
+        ("cntUsage", wt.DWORD),
+        ("th32ThreadID", wt.DWORD),
+        ("th32OwnerProcessID", wt.DWORD),
+        ("tpBasePri", wt.LONG),
+        ("tpDeltaPri", wt.LONG),
+        ("dwFlags", wt.DWORD),
+    ]
+
+class M128A(ctypes.Structure):
+    _fields_ = [
+        ("Low", ctypes.c_ulonglong),
+        ("High", ctypes.c_longlong),
+    ]
+
+class XMM_SAVE_AREA32(ctypes.Structure):
+    _fields_ = [
+        ("ControlWord", wt.WORD),
+        ("StatusWord", wt.WORD),
+        ("TagWord", wt.BYTE),
+        ("Reserved1", wt.BYTE),
+        ("ErrorOpcode", wt.WORD),
+        ("ErrorOffset", wt.DWORD),
+        ("ErrorSelector", wt.WORD),
+        ("Reserved2", wt.WORD),
+        ("DataOffset", wt.DWORD),
+        ("DataSelector", wt.WORD),
+        ("Reserved3", wt.WORD),
+        ("MxCsr", wt.DWORD),
+        ("MxCsr_Mask", wt.DWORD),
+        ("FloatRegisters", M128A * 8),
+        ("XmmRegisters", M128A * 16),
+        ("Reserved4", wt.BYTE * 96),
+    ]
+
+class CONTEXT64(ctypes.Structure):
+    _fields_ = [
+        ("P1Home", ctypes.c_ulonglong),
+        ("P2Home", ctypes.c_ulonglong),
+        ("P3Home", ctypes.c_ulonglong),
+        ("P4Home", ctypes.c_ulonglong),
+        ("P5Home", ctypes.c_ulonglong),
+        ("P6Home", ctypes.c_ulonglong),
+        ("ContextFlags", wt.DWORD),
+        ("MxCsr", wt.DWORD),
+        ("SegCs", wt.WORD),
+        ("SegDs", wt.WORD),
+        ("SegEs", wt.WORD),
+        ("SegFs", wt.WORD),
+        ("SegGs", wt.WORD),
+        ("SegSs", wt.WORD),
+        ("EFlags", wt.DWORD),
+        ("Dr0", ctypes.c_ulonglong),
+        ("Dr1", ctypes.c_ulonglong),
+        ("Dr2", ctypes.c_ulonglong),
+        ("Dr3", ctypes.c_ulonglong),
+        ("Dr6", ctypes.c_ulonglong),
+        ("Dr7", ctypes.c_ulonglong),
+        ("Rax", ctypes.c_ulonglong),
+        ("Rcx", ctypes.c_ulonglong),
+        ("Rdx", ctypes.c_ulonglong),
+        ("Rbx", ctypes.c_ulonglong),
+        ("Rsp", ctypes.c_ulonglong),
+        ("Rbp", ctypes.c_ulonglong),
+        ("Rsi", ctypes.c_ulonglong),
+        ("Rdi", ctypes.c_ulonglong),
+        ("R8", ctypes.c_ulonglong),
+        ("R9", ctypes.c_ulonglong),
+        ("R10", ctypes.c_ulonglong),
+        ("R11", ctypes.c_ulonglong),
+        ("R12", ctypes.c_ulonglong),
+        ("R13", ctypes.c_ulonglong),
+        ("R14", ctypes.c_ulonglong),
+        ("R15", ctypes.c_ulonglong),
+        ("Rip", ctypes.c_ulonglong),
+        ("FltSave", XMM_SAVE_AREA32),
+        ("VectorRegister", M128A * 26),
+        ("VectorControl", ctypes.c_ulonglong),
+        ("DebugControl", ctypes.c_ulonglong),
+        ("LastBranchToRip", ctypes.c_ulonglong),
+        ("LastBranchFromRip", ctypes.c_ulonglong),
+        ("LastExceptionToRip", ctypes.c_ulonglong),
+        ("LastExceptionFromRip", ctypes.c_ulonglong),
+    ]
+
 # Function prototypes
 kernel32.OpenProcess.restype = wt.HANDLE
 kernel32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+
+kernel32.OpenThread.restype = wt.HANDLE
+kernel32.OpenThread.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
 
 kernel32.CloseHandle.restype = wt.BOOL
 kernel32.CloseHandle.argtypes = [wt.HANDLE]
@@ -131,6 +231,24 @@ kernel32.Module32First.argtypes = [wt.HANDLE, ctypes.POINTER(MODULEENTRY32)]
 
 kernel32.Module32Next.restype = wt.BOOL
 kernel32.Module32Next.argtypes = [wt.HANDLE, ctypes.POINTER(MODULEENTRY32)]
+
+kernel32.Thread32First.restype = wt.BOOL
+kernel32.Thread32First.argtypes = [wt.HANDLE, ctypes.POINTER(THREADENTRY32)]
+
+kernel32.Thread32Next.restype = wt.BOOL
+kernel32.Thread32Next.argtypes = [wt.HANDLE, ctypes.POINTER(THREADENTRY32)]
+
+kernel32.SuspendThread.restype = wt.DWORD
+kernel32.SuspendThread.argtypes = [wt.HANDLE]
+
+kernel32.ResumeThread.restype = wt.DWORD
+kernel32.ResumeThread.argtypes = [wt.HANDLE]
+
+kernel32.GetThreadContext.restype = wt.BOOL
+kernel32.GetThreadContext.argtypes = [wt.HANDLE, ctypes.POINTER(CONTEXT64)]
+
+kernel32.GetCurrentThreadId.restype = wt.DWORD
+kernel32.GetCurrentThreadId.argtypes = []
 
 kernel32.WriteProcessMemory.restype = wt.BOOL
 kernel32.WriteProcessMemory.argtypes = [
@@ -288,6 +406,53 @@ def _get_modules(pid: int) -> List[Dict[str, Any]]:
         kernel32.CloseHandle(snap)
 
     return modules
+
+
+def _get_threads(pid: int) -> List[Dict[str, Any]]:
+    """Retorna threads pertenecientes al proceso."""
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if snap == wt.HANDLE(-1).value or snap == 0xFFFFFFFF or snap == -1:
+        raise OSError(f"CreateToolhelp32Snapshot fallo al enumerar threads para PID {pid}")
+
+    threads = []
+    te32 = THREADENTRY32()
+    te32.dwSize = ctypes.sizeof(THREADENTRY32)
+
+    try:
+        if kernel32.Thread32First(snap, ctypes.byref(te32)):
+            while True:
+                if int(te32.th32OwnerProcessID) == pid:
+                    threads.append({
+                        "thread_id": int(te32.th32ThreadID),
+                        "owner_pid": int(te32.th32OwnerProcessID),
+                        "base_priority": int(te32.tpBasePri),
+                        "delta_priority": int(te32.tpDeltaPri),
+                        "flags": int(te32.dwFlags),
+                    })
+                if not kernel32.Thread32Next(snap, ctypes.byref(te32)):
+                    break
+    finally:
+        kernel32.CloseHandle(snap)
+
+    return threads
+
+
+def _open_thread(thread_id: int, access: int = THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION) -> wt.HANDLE:
+    handle = kernel32.OpenThread(access, False, thread_id)
+    if not handle:
+        err = ctypes.get_last_error()
+        raise PermissionError(f"No se pudo abrir thread {thread_id} (error {err})")
+    return handle
+
+
+def _get_thread_context64(thread_handle: wt.HANDLE) -> CONTEXT64:
+    ctx = CONTEXT64()
+    ctx.ContextFlags = CONTEXT_CONTROL_INTEGER
+    ok = kernel32.GetThreadContext(thread_handle, ctypes.byref(ctx))
+    if not ok:
+        err = ctypes.get_last_error()
+        raise OSError(f"GetThreadContext fallo (error {err})")
+    return ctx
 
 
 def _find_module(pid: int, module_name: Optional[str] = None, address: Optional[int] = None) -> Dict[str, Any]:
@@ -492,6 +657,31 @@ def _memory_regions(handle: wt.HANDLE, readable_only: bool = True) -> List[Dict[
             break
 
     return regions
+
+
+def _memory_region_at(handle: wt.HANDLE, address: int) -> Optional[Dict[str, Any]]:
+    """Devuelve la region VirtualQueryEx que contiene address."""
+    mbi = MEMORY_BASIC_INFORMATION()
+    result = kernel32.VirtualQueryEx(
+        handle,
+        ctypes.c_void_p(address),
+        ctypes.byref(mbi),
+        ctypes.sizeof(mbi),
+    )
+    if result == 0:
+        return None
+
+    is_readable = bool(mbi.Protect & READABLE_PROTECTIONS) and not (mbi.Protect & PAGE_GUARD)
+    return {
+        "base": f"0x{int(mbi.BaseAddress or 0):X}",
+        "allocation_base": f"0x{int(mbi.AllocationBase or 0):X}",
+        "size": int(mbi.RegionSize),
+        "size_hex": f"0x{int(mbi.RegionSize):X}",
+        "state": f"0x{int(mbi.State):X}",
+        "protect": _protection_str(int(mbi.Protect)),
+        "type": f"0x{int(mbi.Type):X}",
+        "readable": is_readable,
+    }
 
 
 def _format_hex_dump(data: bytes, base_addr: int, bytes_per_line: int = 16) -> str:
@@ -1695,6 +1885,221 @@ async def mem_disassemble_batch(params: DisassembleBatchInput) -> str:
     except Exception as e:
         return json.dumps({
             "error": "disassemble_batch_failed",
+            "message": str(e),
+        }, indent=2, ensure_ascii=False)
+
+
+# ---- Tool: Snapshot de threads ----
+
+class ThreadSnapshotInput(BaseModel):
+    """Input para inspeccionar contextos de threads sin adjuntar debugger."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    pid: int = Field(..., description="PID del proceso", ge=1)
+    thread_id: Optional[int] = Field(default=None, description="Thread ID especifico. Si se omite, enumera varios threads.", ge=1)
+    max_threads: int = Field(default=16, description="Maximo de threads a capturar cuando thread_id se omite", ge=1, le=128)
+    include_stack: bool = Field(default=True, description="Lee bytes alrededor de RSP")
+    stack_bytes: int = Field(default=128, description="Bytes de stack a leer desde RSP", ge=0, le=4096)
+    include_disassembly: bool = Field(default=True, description="Desensambla bytes desde RIP")
+    disasm_bytes: int = Field(default=96, description="Bytes a leer desde RIP para desensamblar", ge=0, le=4096)
+    max_instructions: int = Field(default=24, description="Maximo de instrucciones por thread", ge=1, le=256)
+    syntax: str = Field(default="intel", description="intel o att")
+    skip_current_thread: bool = Field(default=True, description="Evita suspender el thread actual cuando pid es el proceso MCP")
+    allow_live_context_without_suspend: bool = Field(
+        default=True,
+        description="Si no se puede suspender un thread, intenta GetThreadContext sin suspension. Menos consistente, pero util en procesos protegidos.",
+    )
+
+
+def _thread_registers_to_dict(ctx: CONTEXT64) -> Dict[str, Any]:
+    return {
+        "rip": f"0x{int(ctx.Rip):X}",
+        "rsp": f"0x{int(ctx.Rsp):X}",
+        "rbp": f"0x{int(ctx.Rbp):X}",
+        "rax": f"0x{int(ctx.Rax):X}",
+        "rbx": f"0x{int(ctx.Rbx):X}",
+        "rcx": f"0x{int(ctx.Rcx):X}",
+        "rdx": f"0x{int(ctx.Rdx):X}",
+        "rsi": f"0x{int(ctx.Rsi):X}",
+        "rdi": f"0x{int(ctx.Rdi):X}",
+        "r8": f"0x{int(ctx.R8):X}",
+        "r9": f"0x{int(ctx.R9):X}",
+        "r10": f"0x{int(ctx.R10):X}",
+        "r11": f"0x{int(ctx.R11):X}",
+        "r12": f"0x{int(ctx.R12):X}",
+        "r13": f"0x{int(ctx.R13):X}",
+        "r14": f"0x{int(ctx.R14):X}",
+        "r15": f"0x{int(ctx.R15):X}",
+        "eflags": f"0x{int(ctx.EFlags):X}",
+    }
+
+
+def _module_summary_for_address(modules: List[Dict[str, Any]], address: int) -> Optional[Dict[str, Any]]:
+    for module in modules:
+        base = int(module["base"])
+        size = int(module["size"])
+        if base <= address < base + size:
+            return {
+                "name": module["name"],
+                "base": module.get("base_hex", f"0x{base:X}"),
+                "size": module.get("size_hex", f"0x{size:X}"),
+                "path": module.get("path", ""),
+                "rva": f"0x{address - base:X}",
+            }
+    return None
+
+
+@mcp.tool(
+    name="mem_thread_snapshot",
+    annotations={
+        "title": "Snapshot de threads",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False,
+    },
+)
+async def mem_thread_snapshot(params: ThreadSnapshotInput) -> str:
+    """Suspende threads brevemente y captura registros, stack y codigo en RIP.
+
+    No usa DebugActiveProcess ni crea una sesion debugger. Cada thread se
+    suspende individualmente, se consulta con GetThreadContext y se reanuda en
+    un bloque finally.
+    """
+    try:
+        process_handle = _get_handle(params.pid)
+        all_threads = _get_threads(params.pid)
+        current_tid = int(kernel32.GetCurrentThreadId()) if params.pid == os.getpid() else None
+
+        if params.thread_id is not None:
+            selected = [thread for thread in all_threads if int(thread["thread_id"]) == params.thread_id]
+            if not selected:
+                return json.dumps({
+                    "error": "thread_not_found",
+                    "pid": params.pid,
+                    "thread_id": params.thread_id,
+                    "threads_total": len(all_threads),
+                }, indent=2, ensure_ascii=False)
+        else:
+            selected = all_threads[:params.max_threads]
+
+        modules = []
+        try:
+            modules = _get_modules(params.pid)
+        except Exception:
+            modules = []
+
+        snapshots: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        skipped: List[Dict[str, Any]] = []
+
+        for thread in selected:
+            tid = int(thread["thread_id"])
+            if params.skip_current_thread and current_tid is not None and tid == current_tid:
+                skipped.append({
+                    "thread_id": tid,
+                    "reason": "current_mcp_thread",
+                })
+                continue
+
+            thread_handle = None
+            suspended = False
+            live_without_suspend = False
+            previous_suspend_count: Optional[int] = None
+            try:
+                try:
+                    thread_handle = _open_thread(tid)
+                    previous_suspend_count = int(kernel32.SuspendThread(thread_handle))
+                    if previous_suspend_count == 0xFFFFFFFF:
+                        err = ctypes.get_last_error()
+                        raise OSError(f"SuspendThread fallo (error {err})")
+                    suspended = True
+                except Exception as suspend_exc:
+                    if thread_handle:
+                        kernel32.CloseHandle(thread_handle)
+                        thread_handle = None
+                    if not params.allow_live_context_without_suspend:
+                        raise
+                    thread_handle = _open_thread(tid, THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION)
+                    live_without_suspend = True
+
+                ctx = _get_thread_context64(thread_handle)
+                rip = int(ctx.Rip)
+                rsp = int(ctx.Rsp)
+                record: Dict[str, Any] = {
+                    **thread,
+                    "suspend_previous_count": previous_suspend_count,
+                    "suspended": suspended,
+                    "live_context_without_suspend": live_without_suspend,
+                    "registers": _thread_registers_to_dict(ctx),
+                    "rip_module": _module_summary_for_address(modules, rip),
+                    "rip_region": _memory_region_at(process_handle, rip),
+                }
+                if live_without_suspend:
+                    record["warning"] = "Thread could not be suspended; context/stack/disassembly are a live snapshot and may race with execution."
+
+                if params.include_stack and params.stack_bytes > 0 and rsp:
+                    stack = _read_bytes_best_effort(process_handle, rsp, params.stack_bytes)
+                    record["stack"] = {
+                        "address": f"0x{rsp:X}",
+                        "region": _memory_region_at(process_handle, rsp),
+                        "bytes_requested": params.stack_bytes,
+                        "bytes_read": stack["bytes_read"],
+                        "complete": stack["complete"],
+                        "segments": stack["segments"],
+                        "errors": stack["errors"],
+                        "hex_dump": _format_hex_dump(stack["data"], rsp),
+                    }
+
+                if params.include_disassembly and params.disasm_bytes > 0 and rip:
+                    code = _read_bytes_best_effort(process_handle, rip, params.disasm_bytes)
+                    disasm: Dict[str, Any] = {
+                        "address": f"0x{rip:X}",
+                        "bytes_requested": params.disasm_bytes,
+                        "bytes_read": code["bytes_read"],
+                        "complete": code["complete"],
+                        "read_errors": code["errors"],
+                    }
+                    if code["data"]:
+                        try:
+                            disasm.update(_disassemble_x64_bytes(
+                                code["data"],
+                                rip,
+                                params.max_instructions,
+                                params.syntax,
+                                include_bytes=True,
+                            ))
+                        except Exception as exc:
+                            disasm["error"] = str(exc)
+                    record["disassembly"] = disasm
+
+                snapshots.append(record)
+
+            except Exception as exc:
+                errors.append({
+                    "thread_id": tid,
+                    "error": str(exc),
+                })
+            finally:
+                if suspended and thread_handle:
+                    kernel32.ResumeThread(thread_handle)
+                if thread_handle:
+                    kernel32.CloseHandle(thread_handle)
+
+        return json.dumps({
+            "pid": params.pid,
+            "threads_total": len(all_threads),
+            "threads_selected": len(selected),
+            "captured_count": len(snapshots),
+            "skipped": skipped,
+            "errors": errors,
+            "snapshots": snapshots,
+            "note": "No debugger is attached. Threads are suspended one at a time and resumed immediately after context capture.",
+        }, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({
+            "error": "thread_snapshot_failed",
             "message": str(e),
         }, indent=2, ensure_ascii=False)
 
