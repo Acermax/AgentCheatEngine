@@ -18,15 +18,14 @@ entornos donde tengas permiso.
 - `memory_mcp_server.py`: servidor MCP principal.
 - `requirements.txt`: dependencias Python.
 - `install.bat`: instalador rapido para Windows.
-- `AGENTS.md`: notas operativas para agentes Codex/MCP.
 - `docs/agent_usage.md`: guia con ejemplos de llamadas MCP.
-- `sample/wow_scanner.py`: ejemplo local de scanner GUI estilo Cheat Engine.
+- `sample/memory_scanner.py`: ejemplo local de scanner GUI estilo Cheat Engine.
 
 ## Caracteristicas
 
 - Listado de procesos, modulos y mapa de memoria.
 - Lectura de memoria con interpretacion basica y hexdump.
-- Resolucion de expresiones como `Wow.exe+0x414F6D0+0x4`.
+- Resolucion de expresiones como `DemoApp.exe+0x414F6D0+0x4`.
 - Lectura tipada de estructuras y cadenas de punteros.
 - Lecturas batch para reducir llamadas MCP.
 - Busquedas de valores numericos, flotantes y strings.
@@ -103,7 +102,7 @@ Correcto:
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x123456",
+    "address": "DemoApp.exe+0x123456",
     "size": 128
   }
 }
@@ -114,15 +113,12 @@ Incorrecto:
 ```json
 {
   "pid": 1234,
-  "address": "Wow.exe+0x123456",
+  "address": "DemoApp.exe+0x123456",
   "size": 128
 }
 ```
 
-Lee tambien:
-
-- [AGENTS.md](AGENTS.md)
-- [docs/agent_usage.md](docs/agent_usage.md)
+Lee tambien [docs/agent_usage.md](docs/agent_usage.md).
 
 ## Herramientas MCP
 
@@ -158,7 +154,7 @@ Listar procesos:
 ```json
 {
   "params": {
-    "filter_name": "wow"
+    "filter_name": "demo"
   }
 }
 ```
@@ -169,7 +165,7 @@ Leer memoria:
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x414F6D0+0x4",
+    "address": "DemoApp.exe+0x414F6D0+0x4",
     "size": 64,
     "interpret": true
   }
@@ -182,7 +178,7 @@ Desensamblar:
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x123456",
+    "address": "DemoApp.exe+0x123456",
     "size": 160,
     "max_instructions": 40,
     "syntax": "intel"
@@ -197,7 +193,7 @@ Buscar callers directos:
   "params": {
     "pid": 1234,
     "target_addresses": ["0x4630", "0x4710"],
-    "module_name": "Wow.exe"
+    "module_name": "DemoApp.exe"
   }
 }
 ```
@@ -209,7 +205,7 @@ AOB scan acotado:
   "params": {
     "pid": 1234,
     "pattern": "48 8B ?? ?? B0 01 C3",
-    "module_name": "Wow.exe",
+    "module_name": "DemoApp.exe",
     "max_results": 30
   }
 }
@@ -238,7 +234,7 @@ rapido y el servidor escribe progreso/resultados en `artifacts/scan_jobs/`.
   "params": {
     "pid": 1234,
     "pattern": "B0 01 C3",
-    "module_name": "Wow.exe",
+    "module_name": "DemoApp.exe",
     "max_results": 100000
   }
 }
@@ -274,7 +270,7 @@ Herramienta: `mem_scan_file_status`.
 Comprobar sintaxis:
 
 ```bat
-python -m py_compile memory_mcp_server.py sample\wow_scanner.py
+python -m py_compile memory_mcp_server.py sample\memory_scanner.py
 ```
 
 El repositorio ignora `venv/`, `__pycache__/`, `.pytest_cache/` y los resultados
@@ -282,5 +278,4 @@ temporales de `artifacts/scan_jobs/`.
 
 ## Licencia
 
-Sin licencia declarada por ahora. Anade una licencia antes de distribuir el
-proyecto publicamente si quieres permitir uso, copia o modificacion por terceros.
+Este proyecto se distribuye bajo licencia MIT. Consulta [LICENSE](LICENSE).

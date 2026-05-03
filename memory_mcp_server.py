@@ -3,7 +3,7 @@
 MCP Server para lectura de memoria de procesos Windows.
 
 Diseñado para exploración y reverse engineering de estructuras de datos
-en procesos como juegos (D2R, WoW, etc.). Usa Windows API (ReadProcessMemory,
+en procesos propios, laboratorios o apps con autorizacion. Usa Windows API (ReadProcessMemory,
 VirtualQueryEx, etc.) via ctypes.
 
 Requiere: Python 3.10+, mcp[cli], pydantic, psutil
@@ -543,8 +543,8 @@ def _parse_address_expression(expr: str, pid: Optional[int] = None) -> int:
     Resuelve direcciones numericas y expresiones simples:
       0x7FF600001000
       140000000
-      Wow.exe+0x39310D8
-      Wow.exe+0x414F6D0+0x4
+      DemoApp.exe+0x39310D8
+      DemoApp.exe+0x414F6D0+0x4
       kernel32.dll-0x20
     """
     text = str(expr).strip()
@@ -890,8 +890,8 @@ def _too_expensive_scan_response(
         "region_count": len(regions),
         "hint": hint,
         "examples": [
-            {"module_name": "Wow.exe"},
-            {"region_start": "Wow.exe+0x1000", "region_end": "Wow.exe+0x200000"},
+            {"module_name": "DemoApp.exe"},
+            {"region_start": "DemoApp.exe+0x1000", "region_end": "DemoApp.exe+0x200000"},
             {"max_scan_mb": int(total_mb) + 1},
         ],
     }, indent=2, ensure_ascii=False)
@@ -1038,7 +1038,7 @@ class ListProcessesInput(BaseModel):
 
     filter_name: Optional[str] = Field(
         default=None,
-        description="Filtro parcial por nombre de proceso (case-insensitive). Ej: 'wow', 'd2r', 'chrome'"
+        description="Filtro parcial por nombre de proceso (case-insensitive). Ej: 'demo', 'target'"
     )
 
 @mcp.tool(
@@ -1055,7 +1055,7 @@ async def mem_list_processes(params: ListProcessesInput) -> str:
     """Lista procesos en ejecución con PID, nombre y uso de memoria.
 
     Usa el filtro para buscar procesos por nombre parcial.
-    Ejemplo: filter_name='wow' encontrará 'Wow.exe', 'WowClassic.exe', etc.
+    Ejemplo: filter_name='demo' encontrara 'DemoApp.exe', 'DemoTool.exe', etc.
     """
     try:
         procs = []
@@ -1091,7 +1091,7 @@ class GetModulesInput(BaseModel):
     pid: int = Field(..., description="PID del proceso objetivo", ge=1)
     filter_name: Optional[str] = Field(
         default=None,
-        description="Filtro parcial por nombre de módulo. Ej: 'Wow' para el exe principal"
+        description="Filtro parcial por nombre de modulo. Ej: 'DemoApp' para el exe principal"
     )
 
 @mcp.tool(
@@ -1107,8 +1107,8 @@ class GetModulesInput(BaseModel):
 async def mem_get_modules(params: GetModulesInput) -> str:
     """Lista módulos (DLLs, exe) cargados en un proceso con sus direcciones base.
 
-    Esencial para encontrar la base del ejecutable principal. En juegos,
-    la mayoría de offsets son relativos al módulo principal (RVA).
+    Esencial para encontrar la base del ejecutable principal. En procesos grandes,
+    la mayoria de offsets son relativos al modulo principal (RVA).
     Ej: base del exe + RVA del offset = dirección absoluta.
     """
     try:
@@ -1337,7 +1337,7 @@ class FindCallersInput(BaseModel):
     pid: int = Field(..., description="PID del proceso", ge=1)
     target_addresses: List[str] = Field(
         default_factory=list,
-        description="Targets absolutos o RVAs si se proporciona module_name. Ej: ['Wow.exe+0x4630', '0x7FF...4710']",
+        description="Targets absolutos o RVAs si se proporciona module_name. Ej: ['DemoApp.exe+0x4630', '0x7FF...4710']",
         max_length=32,
     )
     target_address: Optional[str] = Field(default=None, description="Target unico alternativo")
@@ -1804,8 +1804,8 @@ class FollowPointersInput(BaseModel):
 async def mem_follow_pointers(params: FollowPointersInput) -> str:
     """Sigue una cadena de punteros derrefenciando en cada paso.
 
-    Patrón fundamental en reverse engineering de juegos.
-    Ej: Player Unit → +0x20 → Act → +0x70 → ActMisc → +0x860 → map seed
+    Patron fundamental en reverse engineering de estructuras dinamicas.
+    Ej: Root object -> +0x20 -> Context -> +0x70 -> Metadata -> +0x860 -> value
 
     Cada paso: lee un puntero de 8 bytes (x64) en [current + offset],
     el valor leído se convierte en la nueva dirección base.
@@ -1951,7 +1951,7 @@ class SearchValueInput(BaseModel):
     pid: int = Field(..., description="PID del proceso", ge=1)
     value: str = Field(
         ...,
-        description="Valor a buscar. Ej: '12345' (int), '3.14' (float), 'PlayerName' (string)"
+        description="Valor a buscar. Ej: '12345' (int), '3.14' (float), 'ExampleName' (string)"
     )
     value_type: str = Field(
         default="auto",
@@ -1983,9 +1983,9 @@ async def mem_search_value(params: SearchValueInput) -> str:
 
     Similar a la función 'First Scan' de Cheat Engine.
     Recorre todas las regiones legibles del proceso buscando coincidencias.
-    Útil para encontrar dónde se almacena un valor conocido (HP, posición, nivel, etc.).
+    Util para encontrar donde se almacena un valor conocido (contador, posicion, estado, etc.).
 
-    Tip: usa region_start/region_end para acotar al módulo del juego y acelerar.
+    Tip: usa region_start/region_end para acotar al modulo objetivo y acelerar.
     """
     try:
         handle = _get_handle(params.pid)
@@ -2115,7 +2115,7 @@ class ScanStartInput(BaseModel):
     value_min: Optional[str] = Field(default=None, description="Minimo para scan_mode=range")
     value_max: Optional[str] = Field(default=None, description="Maximo para scan_mode=range")
     tolerance: float = Field(default=0.0, description="Tolerancia para floats", ge=0.0)
-    module_name: Optional[str] = Field(default=None, description="Modulo a escanear. Ej: Wow.exe")
+    module_name: Optional[str] = Field(default=None, description="Modulo a escanear. Ej: DemoApp.exe")
     region_start: Optional[str] = Field(default=None, description="Inicio del rango; admite modulo+offset")
     region_end: Optional[str] = Field(default=None, description="Fin del rango; admite modulo+offset")
     alignment: int = Field(default=0, description="Stride del escaneo. 0 usa tamano del tipo", ge=0, le=64)
@@ -2401,7 +2401,7 @@ class AOBScanInput(BaseModel):
     )
     module_name: Optional[str] = Field(
         default=None,
-        description="Nombre del módulo donde buscar (más rápido que escanear todo). Ej: 'Wow.exe'"
+        description="Nombre del modulo donde buscar (mas rapido que escanear todo). Ej: 'DemoApp.exe'"
     )
     region_start: Optional[str] = Field(default=None, description="Inicio del rango; admite modulo+offset")
     region_end: Optional[str] = Field(default=None, description="Fin del rango; admite modulo+offset")
@@ -2446,7 +2446,7 @@ async def mem_aob_scan(params: AOBScanInput) -> str:
             "mem_aob_scan",
             scan_regions,
             params.max_scan_mb,
-            "AOB sin module_name/rango puede recorrer GB y bloquear el servidor MCP. Acota con module_name='Wow.exe' o region_start/region_end.",
+            "AOB sin module_name/rango puede recorrer GB y bloquear el servidor MCP. Acota con module_name='DemoApp.exe' o region_start/region_end.",
         )
         if preflight:
             return preflight
@@ -2503,7 +2503,7 @@ class AOBScanFileStartInput(BaseModel):
 
     pid: int = Field(..., description="PID del proceso", ge=1)
     pattern: str = Field(..., description="Patron AOB con wildcards. Ej: 'B0 01 C3' o '48 8B ?? ??'")
-    module_name: Optional[str] = Field(default=None, description="Modulo a escanear. Ej: Wow.exe")
+    module_name: Optional[str] = Field(default=None, description="Modulo a escanear. Ej: DemoApp.exe")
     region_start: Optional[str] = Field(default=None, description="Inicio del rango; admite modulo+offset")
     region_end: Optional[str] = Field(default=None, description="Fin del rango; admite modulo+offset")
     max_scan_mb: int = Field(default=DEFAULT_JOB_MAX_SCAN_MB, description="Maximo estimado de MB antes de rechazar el job", ge=1, le=32768)
@@ -2722,7 +2722,7 @@ async def mem_memory_map(params: MemoryMapInput) -> str:
         return f"Error obteniendo mapa de memoria: {e}"
 
 
-# ---- Tool: Escanear hash table (estilo D2R/WoW Object Manager) ----
+# ---- Tool: Escanear hash table generica ----
 
 class ScanLinkedListInput(BaseModel):
     """Input para recorrer una linked list / hash table."""
@@ -2735,7 +2735,7 @@ class ScanLinkedListInput(BaseModel):
     )
     next_offset: str = Field(
         ...,
-        description="Offset dentro del nodo al puntero 'next'. Ej: '0x158' en D2R"
+        description="Offset dentro del nodo al puntero 'next'. Ej: '0x158'"
     )
     fields: List[StructField] = Field(
         default_factory=list,
@@ -2757,11 +2757,9 @@ class ScanLinkedListInput(BaseModel):
 async def mem_scan_linked_list(params: ScanLinkedListInput) -> str:
     """Recorre una linked list en memoria, leyendo nodos hasta NULL o max_nodes.
 
-    Fundamental para explorar hash tables y object managers en juegos.
-    En D2R: hash table de 128 slots, cada slot apunta al primer nodo,
-    cada nodo tiene next en +0x158.
-
-    En WoW: el Object Manager usa una lista/array similar.
+    Fundamental para explorar hash tables y object managers genericos.
+    Caso generico: una tabla de N slots donde cada slot apunta al primer nodo
+    y cada nodo contiene un puntero next en un offset conocido.
 
     Puedes definir campos opcionales para leer datos de cada nodo
     (ej: type, id, position, etc.).
@@ -2865,11 +2863,11 @@ class CompareMemoryInput(BaseModel):
 async def mem_compare(params: CompareMemoryInput) -> str:
     """Compara el estado actual de una región de memoria contra datos previos.
 
-    Ideal para detectar qué bytes cambian cuando algo ocurre en el juego
-    (ej: mover el personaje, recibir daño, subir de nivel).
+    Ideal para detectar que bytes cambian cuando algo ocurre en la app objetivo
+    (ej: mover un control, cambiar un contador, alternar un estado).
 
-    Workflow: 1) mem_read → copiar hex, 2) hacer algo en el juego,
-    3) mem_compare con el hex previo → ver qué cambió.
+    Workflow: 1) mem_read -> copiar hex, 2) interactuar con la app objetivo,
+    3) mem_compare con el hex previo -> ver que cambio.
     """
     try:
         addr = _parse_address_expression(params.address, params.pid)

@@ -24,7 +24,7 @@ call the tool like this:
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x123456",
+    "address": "DemoApp.exe+0x123456",
     "size": 128
   }
 }
@@ -35,7 +35,7 @@ Do not call it like this:
 ```json
 {
   "pid": 1234,
-  "address": "Wow.exe+0x123456",
+  "address": "DemoApp.exe+0x123456",
   "size": 128
 }
 ```
@@ -50,7 +50,7 @@ wrapper. Do not change the semantic query.
 ```json
 {
   "params": {
-    "filter_name": "wow"
+    "filter_name": "demo"
   }
 }
 ```
@@ -63,7 +63,7 @@ Use with `mem_list_processes`.
 {
   "params": {
     "pid": 1234,
-    "filter_name": "Wow.exe"
+    "filter_name": "DemoApp.exe"
   }
 }
 ```
@@ -76,7 +76,7 @@ Use with `mem_get_modules`.
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x414F6D0+0x4",
+    "address": "DemoApp.exe+0x414F6D0+0x4",
     "size": 64,
     "interpret": true
   }
@@ -91,7 +91,7 @@ Use with `mem_read`.
 {
   "params": {
     "pid": 1234,
-    "address": "Wow.exe+0x123456",
+    "address": "DemoApp.exe+0x123456",
     "size": 160,
     "max_instructions": 40,
     "syntax": "intel"
@@ -115,7 +115,7 @@ resolves every `E8 disp32` mathematically:
       "0x7FF6CBC74630",
       "0x7FF6CBC74710"
     ],
-    "module_name": "Wow.exe"
+    "module_name": "DemoApp.exe"
   }
 }
 ```
@@ -127,7 +127,7 @@ If you only know RVAs, pass `module_name` and short targets:
   "params": {
     "pid": 1234,
     "target_addresses": ["0x4630", "0x4710"],
-    "module_name": "Wow.exe"
+    "module_name": "DemoApp.exe"
   }
 }
 ```
@@ -144,12 +144,12 @@ Then call `mem_disassemble` around each `call_site`.
     "items": [
       {
         "name": "x",
-        "address": "Wow.exe+0x414F6D0",
+        "address": "DemoApp.exe+0x414F6D0",
         "type": "f32"
       },
       {
         "name": "y",
-        "address": "Wow.exe+0x414F6D0+0x4",
+        "address": "DemoApp.exe+0x414F6D0+0x4",
         "type": "f32"
       }
     ]
@@ -170,7 +170,7 @@ Good:
   "params": {
     "pid": 1234,
     "pattern": "B0 01 C3",
-    "module_name": "Wow.exe",
+    "module_name": "DemoApp.exe",
     "max_results": 30
   }
 }
@@ -215,7 +215,7 @@ Start:
   "params": {
     "pid": 1234,
     "pattern": "B0 01 C3",
-    "module_name": "Wow.exe",
+    "module_name": "DemoApp.exe",
     "max_results": 100000
   }
 }
@@ -255,9 +255,9 @@ Accepted:
 ```text
 0x7FF600001000
 140694538686464
-Wow.exe+0x39310D8
-Wow.exe+0x414F6D0+0x4
-GameAssembly.dll-0x20
+DemoApp.exe+0x39310D8
+DemoApp.exe+0x414F6D0+0x4
+ExampleModule.dll-0x20
 ```
 
 Use module expressions instead of manually adding module bases.

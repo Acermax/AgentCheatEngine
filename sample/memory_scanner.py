@@ -1,23 +1,24 @@
 """
-WoWScan - Scanner de memoria minimalista estilo CheatEngine.
+MemoryScan - Scanner de memoria minimalista estilo CheatEngine.
 
 Solo lectura via ReadProcessMemory. Sin DLLs, sin hooks, sin inyeccion.
 GUI Tkinter (libreria estandar, sin dependencias externas).
-Ventana siempre encima + hotkeys globales para usar mientras juegas.
+Ventana siempre encima + hotkeys globales para usar mientras observas el
+proceso objetivo.
 
 USO BASICO (flujo CheatEngine):
-    1. Abrir Wow.exe del combo
-    2. Tipo: f32 (HP en WoW retail moderno suele ser float)
-    3. Escribir tu HP actual en "Valor" -> click "FIRST SCAN"
-    4. Recibir un golpe en el juego
-    5. Apretar F8 (hotkey global "menor") sin salir del juego
+    1. Abrir DemoApp.exe del combo
+    2. Elegir el tipo de dato observado, por ejemplo f32
+    3. Escribir el valor actual en "Valor" -> click "FIRST SCAN"
+    4. Cambiar el valor dentro de la app objetivo
+    5. Apretar F8 (hotkey global "menor") sin cambiar de ventana
     6. Repetir 4-5 hasta tener pocos candidatos (1-3)
-    7. La direccion que queda es la del HP del player
+    7. La direccion que queda suele ser el campo observado
 
 HOTKEYS GLOBALES (funcionan sin foco en la app):
-    Ctrl+Shift+F8  -> Decreased (HP bajo - recibiste daño)
+    Ctrl+Shift+F8  -> Decreased (valor bajo)
     Ctrl+Shift+F9  -> Unchanged (mismo valor)
-    Ctrl+Shift+F10 -> Increased (HP subio - regeneraste/curaste)
+    Ctrl+Shift+F10 -> Increased (valor subio)
     Ctrl+Shift+F11 -> Refresh values
 
 Requiere Python 3.8+ en Windows. Tkinter incluido.
@@ -37,7 +38,7 @@ import tkinter as tk
 from ctypes import wintypes
 from tkinter import messagebox, simpledialog, ttk
 
-WATCHES_FILE = os.path.expanduser('~/.wow_scanner_watches.json')
+WATCHES_FILE = os.path.expanduser('~/.memory_scanner_watches.json')
 STRING_DTYPE = 'string (utf-8)'
 DEFAULT_STRING_PREVIEW_BYTES = 128
 DEFAULT_STRING_WATCH_BYTES = 64
@@ -252,7 +253,7 @@ class NumericCandidateFile:
         self.value_fmt = fmt[1:] if fmt.startswith('<') else fmt
         self.record_struct = struct.Struct(f'<Q{self.value_fmt}')
         self.record_size = self.record_struct.size
-        fd, self.path = tempfile.mkstemp(prefix='wowscan_candidates_', suffix='.bin')
+        fd, self.path = tempfile.mkstemp(prefix='memoryscan_candidates_', suffix='.bin')
         os.close(fd)
         self._writer = open(self.path, 'wb')
         self.count = 0
@@ -326,7 +327,7 @@ class Scanner:
         # Si True, exige alineamiento natural al tamano del tipo (mas rapido).
         # Si False, escanea byte a byte (mas lento pero encuentra structs packed).
         self.aligned = False
-        # Filtro opcional de rango (para acotar a heap del juego)
+        # Filtro opcional de rango (para acotar al heap del proceso objetivo)
         self.addr_min = 0
         self.addr_max = 0x7FFFFFFFFFFF
         self.snapshot_dir = None
@@ -667,7 +668,7 @@ class Scanner:
         total = sum(r[1] for r in regs)
         scanned = 0
         regions = []
-        snap_dir = tempfile.mkdtemp(prefix='wowscan_snapshot_')
+        snap_dir = tempfile.mkdtemp(prefix='memoryscan_snapshot_')
 
         try:
             for i, (base, region_size) in enumerate(regs):
@@ -1084,7 +1085,7 @@ HK_REFRESH = 4
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('WoWScan')
+        self.title('MemoryScan')
         self.attributes('-topmost', True)
         self.geometry('480x980')
         self.minsize(440, 800)
@@ -1376,7 +1377,7 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror('Error', f'No pude listar procesos: {e}')
             return
-        procs.sort(key=lambda p: (0 if 'wow' in p[1].lower() else 1, p[1].lower()))
+        procs.sort(key=lambda p: p[1].lower())
         self._proc_list = procs
         self.proc_combo['values'] = [
             f'{p[1]}  (PID {p[0]})' for p in procs
@@ -1892,7 +1893,7 @@ class WatchDialog(tk.Toplevel):
         frm = ttk.Frame(self, padding=10)
         frm.pack(fill='both', expand=True)
 
-        ttk.Label(frm, text='Direccion base (0x..., decimal o Wow.exe+0x...):').grid(
+        ttk.Label(frm, text='Direccion base (0x..., decimal o DemoApp.exe+0x...):').grid(
             row=0, column=0, sticky='w', pady=2
         )
         self.addr_var = tk.StringVar(value=init_addr)
