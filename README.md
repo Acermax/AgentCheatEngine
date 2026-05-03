@@ -1,50 +1,49 @@
 # AgentCheatEngine
 
-Repositorio: https://github.com/Acermax/AgentCheatEngine
+Repository: https://github.com/Acermax/AgentCheatEngine
 
-AgentCheatEngine es un servidor MCP para inspeccionar memoria de procesos en
-Windows desde clientes compatibles con Model Context Protocol, como Codex,
-Claude Desktop u otros agentes. La idea es ofrecer una capa reutilizable estilo
-Cheat Engine para automatizar lecturas, scans, desensamblado y analisis de
-estructuras de memoria.
+AgentCheatEngine is an MCP server for inspecting Windows process memory from
+Model Context Protocol clients such as Codex, Claude Desktop, and other agents.
+It provides a reusable memory-inspection layer for automated reads, scans,
+disassembly, and structure exploration.
 
-El proyecto esta pensado para investigacion, debugging, aprendizaje de reverse
-engineering y trabajo sobre procesos propios o con autorizacion. Algunas
-herramientas pueden modificar memoria, asi que usalas con cuidado y solo en
-entornos donde tengas permiso.
+This project is intended for research, debugging, reverse-engineering education,
+and work on your own processes or systems where you have authorization. Some
+tools can modify process memory, so use them carefully and only in permitted
+environments.
 
-## Contenido
+## Contents
 
-- `memory_mcp_server.py`: servidor MCP principal.
-- `requirements.txt`: dependencias Python.
-- `install.bat`: instalador rapido para Windows.
-- `docs/agent_usage.md`: guia con ejemplos de llamadas MCP.
+- `memory_mcp_server.py`: main MCP server.
+- `requirements.txt`: Python dependencies.
+- `install.bat`: quick Windows installer.
+- `docs/agent_usage.md`: examples and operational notes for MCP clients.
 
-## Caracteristicas
+## Features
 
-- Listado de procesos, modulos y mapa de memoria.
-- Lectura de memoria con interpretacion basica y hexdump.
-- Resolucion de expresiones como `DemoApp.exe+0x414F6D0+0x4`.
-- Lectura tipada de estructuras y cadenas de punteros.
-- Lecturas batch para reducir llamadas MCP.
-- Busquedas de valores numericos, flotantes y strings.
-- Sesiones de scan persistentes con filtros tipo `changed`, `decreased`,
-  `increased`, `eq_prev` y otros.
-- AOB scans con wildcards y preflight para evitar scans demasiado amplios.
-- Jobs a archivo para scans largos con resultados JSONL.
-- Desensamblado x86-64 con Capstone.
-- Busqueda de callers directos mediante resolucion matematica de `CALL rel32`.
-- Comparacion de memoria contra lecturas anteriores.
-- Escritura de bytes con `mem_write` para casos autorizados y controlados.
+- Process, module, and memory-region enumeration.
+- Memory reads with basic interpretation and hexdumps.
+- Address expressions such as `DemoApp.exe+0x414F6D0+0x4`.
+- Typed structure reads and pointer-chain traversal.
+- Batch reads to reduce MCP round trips.
+- Integer, float, and string value searches.
+- Persistent scan sessions with filters such as `changed`, `decreased`,
+  `increased`, `eq_prev`, and more.
+- AOB scans with wildcards and preflight checks for overly broad scans.
+- File-backed background jobs for long scans, with JSONL results.
+- x86-64 disassembly through Capstone.
+- Direct caller discovery by resolving `CALL rel32` targets mathematically.
+- Memory comparison against previous byte snapshots.
+- Controlled byte writes through `mem_write` for authorized use cases.
 
-## Requisitos
+## Requirements
 
 - Windows.
-- Python 3.10 o superior.
-- Permisos suficientes para abrir el proceso objetivo. Para algunos procesos
-  puede hacer falta ejecutar el cliente MCP como administrador.
+- Python 3.10 or newer.
+- Sufficient permissions to open the target process. Some processes may require
+  running the MCP client as administrator.
 
-Dependencias principales:
+Main dependencies:
 
 ```txt
 mcp[cli]>=1.0.0
@@ -53,15 +52,15 @@ psutil>=5.9.0
 capstone>=5.0.0
 ```
 
-## Instalacion
+## Installation
 
-Instalacion rapida:
+Quick install:
 
 ```bat
 install.bat
 ```
 
-Instalacion manual:
+Manual install:
 
 ```bat
 python -m venv venv
@@ -69,11 +68,11 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Configuracion MCP
+## MCP Configuration
 
-Ejemplo de configuracion para un cliente MCP stdio. Sustituye
-`C:\\path\\to\\AgentCheatEngine` por la ruta absoluta donde hayas clonado el
-repositorio:
+Example configuration for an MCP stdio client. Replace
+`C:\\path\\to\\AgentCheatEngine` with the absolute path where you cloned the
+repository:
 
 ```json
 {
@@ -88,13 +87,13 @@ repositorio:
 }
 ```
 
-## Uso Para Agentes
+## Agent Usage
 
-Muchos clientes MCP exponen estas herramientas con un unico argumento requerido
-llamado `params`. Cuando el schema lo pida asi, envuelve siempre los parametros
-dentro de `params`.
+Many MCP clients expose these tools with a single required top-level argument
+named `params`. When the schema expects that shape, always wrap tool arguments
+inside `params`.
 
-Correcto:
+Correct:
 
 ```json
 {
@@ -106,7 +105,7 @@ Correcto:
 }
 ```
 
-Incorrecto:
+Incorrect:
 
 ```json
 {
@@ -116,38 +115,38 @@ Incorrecto:
 }
 ```
 
-Lee tambien [docs/agent_usage.md](docs/agent_usage.md).
+See [docs/agent_usage.md](docs/agent_usage.md) for more examples.
 
-## Herramientas MCP
+## MCP Tools
 
-| Herramienta | Uso |
+| Tool | Purpose |
 | --- | --- |
-| `mem_list_processes` | Lista procesos con filtro opcional por nombre. |
-| `mem_get_modules` | Lista modulos cargados y sus direcciones base. |
-| `mem_memory_map` | Enumera regiones legibles con `VirtualQueryEx`. |
-| `mem_read` | Lee bytes y devuelve hexdump e interpretacion basica. |
-| `mem_disassemble` | Desensambla x86-64 con Capstone. |
-| `mem_find_callers` | Encuentra llamadas directas hacia funciones objetivo. |
-| `mem_read_struct` | Lee varios campos tipados desde una base. |
-| `mem_follow_pointers` | Sigue cadenas de punteros. |
-| `mem_watch_batch` | Lee muchas direcciones tipadas en una sola llamada. |
-| `mem_search_value` | Busca valores o strings en memoria. |
-| `mem_scan_start` | Inicia una sesion persistente de candidatos. |
-| `mem_scan_next` | Filtra candidatos por valor actual o valor previo. |
-| `mem_scan_results` | Pagina y refresca resultados de una sesion. |
-| `mem_scan_clear` | Limpia sesiones de escaneo. |
-| `mem_aob_scan` | Busca patrones de bytes con wildcards. |
-| `mem_aob_scan_file_start` | Lanza AOB scans largos en background. |
-| `mem_scan_file_status` | Consulta el estado de un scan a archivo. |
-| `mem_scan_file_cancel` | Cancela un scan a archivo. |
-| `mem_scan_linked_list` | Recorre listas enlazadas o buckets genericos. |
-| `mem_compare` | Compara memoria actual contra bytes previos. |
-| `mem_write` | Escribe bytes en memoria. Operacion destructiva. |
-| `mem_close` | Cierra el handle cacheado de un PID. |
+| `mem_list_processes` | List processes with an optional name filter. |
+| `mem_get_modules` | List loaded modules and base addresses. |
+| `mem_memory_map` | Enumerate readable regions with `VirtualQueryEx`. |
+| `mem_read` | Read bytes and return a hexdump plus basic interpretation. |
+| `mem_disassemble` | Disassemble x86-64 code with Capstone. |
+| `mem_find_callers` | Find direct calls to target functions. |
+| `mem_read_struct` | Read multiple typed fields from a base address. |
+| `mem_follow_pointers` | Traverse pointer chains. |
+| `mem_watch_batch` | Read many typed addresses in one MCP call. |
+| `mem_search_value` | Search memory for values or strings. |
+| `mem_scan_start` | Start a persistent candidate scan session. |
+| `mem_scan_next` | Filter candidates by current or previous values. |
+| `mem_scan_results` | Page and refresh scan-session results. |
+| `mem_scan_clear` | Clear scan sessions. |
+| `mem_aob_scan` | Search byte patterns with wildcards. |
+| `mem_aob_scan_file_start` | Start long AOB scans in the background. |
+| `mem_scan_file_status` | Check the status of a file-backed scan. |
+| `mem_scan_file_cancel` | Cancel a file-backed scan. |
+| `mem_scan_linked_list` | Walk generic linked lists or bucket chains. |
+| `mem_compare` | Compare current memory against previous bytes. |
+| `mem_write` | Write bytes to memory. Destructive operation. |
+| `mem_close` | Close the cached handle for a PID. |
 
-## Ejemplos Rapidos
+## Quick Examples
 
-Listar procesos:
+List processes:
 
 ```json
 {
@@ -157,7 +156,7 @@ Listar procesos:
 }
 ```
 
-Leer memoria:
+Read memory:
 
 ```json
 {
@@ -170,7 +169,7 @@ Leer memoria:
 }
 ```
 
-Desensamblar:
+Disassemble:
 
 ```json
 {
@@ -184,7 +183,7 @@ Desensamblar:
 }
 ```
 
-Buscar callers directos:
+Find direct callers:
 
 ```json
 {
@@ -196,7 +195,7 @@ Buscar callers directos:
 }
 ```
 
-AOB scan acotado:
+Bounded AOB scan:
 
 ```json
 {
@@ -209,23 +208,25 @@ AOB scan acotado:
 }
 ```
 
-## Reglas De Uso Recomendadas
+## Recommended Rules
 
-- Acota scans con `module_name`, `region_start` o `region_end` siempre que sea
-  posible.
-- Si una herramienta devuelve `scan_too_broad`, no repitas la misma llamada:
-  estrecha el rango o usa un job a archivo.
-- Usa `mem_disassemble` antes de contar bytes manualmente.
-- Usa `mem_find_callers` para callers directos en vez de buscar `E8` a mano.
-- Usa `mem_watch_batch` para muchas lecturas pequenas.
-- Trata `mem_write` como una operacion destructiva: valida direccion, bytes y
-  proceso antes de ejecutarla.
-- Cierra handles con `mem_close` al terminar una sesion.
+- Bound scans with `module_name`, `region_start`, or `region_end` whenever
+  possible.
+- If a tool returns `scan_too_broad`, do not repeat the same call unchanged.
+  Narrow the range or use a file-backed scan job.
+- Use `mem_disassemble` before manually counting instruction bytes.
+- Use `mem_find_callers` for direct callers instead of scanning for bare `E8`
+  bytes.
+- Use `mem_watch_batch` for many small reads.
+- Treat `mem_write` as destructive: validate the process, address, and bytes
+  before running it.
+- Close handles with `mem_close` when a session is done.
 
-## Scans Grandes A Archivo
+## Large File-Backed Scans
 
-Para consultas que pueden tardar mucho, usa jobs a archivo. La llamada vuelve
-rapido y el servidor escribe progreso/resultados en `artifacts/scan_jobs/`.
+For queries that may take a long time, use file-backed jobs. The MCP call
+returns quickly while the server writes progress and results under
+`artifacts/scan_jobs/`.
 
 ```json
 {
@@ -238,9 +239,9 @@ rapido y el servidor escribe progreso/resultados en `artifacts/scan_jobs/`.
 }
 ```
 
-Herramienta: `mem_aob_scan_file_start`.
+Tool: `mem_aob_scan_file_start`.
 
-Despues consulta:
+Then poll:
 
 ```json
 {
@@ -251,29 +252,29 @@ Despues consulta:
 }
 ```
 
-Herramienta: `mem_scan_file_status`.
+Tool: `mem_scan_file_status`.
 
-## Errores Comunes
+## Common Errors
 
-- `params Field required`: envuelve los argumentos dentro de `params`.
-- `scan_too_broad`: acota el modulo o rango antes de repetir.
-- `ERROR_PARTIAL_COPY` / WinError 299: la lectura cruzo una pagina no legible o
-  cambiante; reduce `size` o alinea la lectura.
-- `Access denied` / WinError 5: ejecuta el cliente MCP como administrador.
-- `missing_dependency capstone`: instala dependencias con
+- `params Field required`: wrap arguments inside `params`.
+- `scan_too_broad`: narrow the module or range before retrying.
+- `ERROR_PARTIAL_COPY` / WinError 299: the read crossed an unreadable or
+  changing page; reduce `size` or align the read.
+- `Access denied` / WinError 5: run the MCP client as administrator.
+- `missing_dependency capstone`: install dependencies with
   `pip install -r requirements.txt`.
 
-## Desarrollo
+## Development
 
-Comprobar sintaxis:
+Check syntax:
 
 ```bat
 python -m py_compile memory_mcp_server.py
 ```
 
-El repositorio ignora `venv/`, `__pycache__/`, `.pytest_cache/` y los resultados
-temporales de `artifacts/scan_jobs/`.
+The repository ignores `venv/`, `__pycache__/`, `.pytest_cache/`, and temporary
+scan results under `artifacts/scan_jobs/`.
 
-## Licencia
+## License
 
-Este proyecto se distribuye bajo licencia MIT. Consulta [LICENSE](LICENSE).
+This project is distributed under the MIT license. See [LICENSE](LICENSE).
