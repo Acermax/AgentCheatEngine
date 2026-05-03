@@ -71,23 +71,22 @@ pip install -r requirements.txt
 
 ## Configuracion MCP
 
-Ejemplo de configuracion para un cliente MCP stdio:
+Ejemplo de configuracion para un cliente MCP stdio. Sustituye
+`C:\\path\\to\\AgentCheatEngine` por la ruta absoluta donde hayas clonado el
+repositorio:
 
 ```json
 {
   "mcpServers": {
     "memory": {
-      "command": "C:\\Users\\Acermax\\PycharmProjects\\AgentCheatEngine\\venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\AgentCheatEngine\\venv\\Scripts\\python.exe",
       "args": [
-        "C:\\Users\\Acermax\\PycharmProjects\\AgentCheatEngine\\memory_mcp_server.py"
+        "C:\\path\\to\\AgentCheatEngine\\memory_mcp_server.py"
       ]
     }
   }
 }
 ```
-
-Si clonas el repositorio en otra ruta, ajusta `command` y `args` a la ruta
-local correspondiente.
 
 ## Uso Para Agentes
 
