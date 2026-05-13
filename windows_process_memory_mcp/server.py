@@ -1,4 +1,4 @@
-"""MCP server assembly for AgentCheatEngine."""
+"""MCP server assembly for Windows Process Memory MCP."""
 
 from .runtime import mcp
 

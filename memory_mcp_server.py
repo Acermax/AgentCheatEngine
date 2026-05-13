@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compatibility entrypoint for the AgentCheatEngine memory MCP server."""
+"""Compatibility entrypoint for the Windows Process Memory MCP server."""
 
-from agentcheatengine.server import mcp
+from windows_process_memory_mcp.server import mcp
 
 
 if __name__ == "__main__":

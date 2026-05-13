@@ -1,10 +1,10 @@
 # Agent Usage Guide
 
-This guide is for agents using the AgentCheatEngine MCP server.
+This guide is for agents using the Windows Process Memory MCP server.
 
 ## 1. Call Envelope
 
-In Codex-style MCP tool schemas, AgentCheatEngine tools are usually exposed as
+In Codex-style MCP tool schemas, Windows Process Memory MCP tools are usually exposed as
 a single required argument named `params`.
 
 When the schema says:

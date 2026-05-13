@@ -1,11 +1,12 @@
-# AgentCheatEngine
+# Windows Process Memory MCP
 
-Repository: https://github.com/Acermax/AgentCheatEngine
+Repository: https://github.com/Acermax/windows-process-memory-mcp
 
-AgentCheatEngine is an MCP server for inspecting Windows process memory from
-Model Context Protocol clients such as Codex, Claude Desktop, and other agents.
-It provides a reusable memory-inspection layer for automated reads, scans,
-disassembly, and structure exploration.
+Windows Process Memory MCP is an MCP server for inspecting Windows process
+memory from Model Context Protocol clients such as Codex, Claude Desktop, and
+other agents. It provides a reusable memory-inspection layer for automated
+reads, scans, disassembly, debugger-assisted analysis, and structure
+exploration.
 
 This project is intended for research, debugging, reverse-engineering education,
 and work on your own processes or systems where you have authorization. Some
@@ -15,8 +16,8 @@ environments.
 ## Contents
 
 - `memory_mcp_server.py`: compatibility entrypoint for existing MCP configs.
-- `agentcheatengine/`: internal server package with runtime helpers and tool modules.
-- `agentcheatengine/tools/`: grouped MCP tool registrations.
+- `windows_process_memory_mcp/`: internal server package with runtime helpers and tool modules.
+- `windows_process_memory_mcp/tools/`: grouped MCP tool registrations.
 - `requirements.txt`: Python dependencies.
 - `install.bat`: quick Windows installer.
 - `docs/agent_usage.md`: examples and operational notes for MCP clients.
@@ -78,16 +79,16 @@ pip install -r requirements.txt
 ## MCP Configuration
 
 Example configuration for an MCP stdio client. Replace
-`C:\\path\\to\\AgentCheatEngine` with the absolute path where you cloned the
+`C:\\path\\to\\windows-process-memory-mcp` with the absolute path where you cloned the
 repository:
 
 ```json
 {
   "mcpServers": {
     "memory": {
-      "command": "C:\\path\\to\\AgentCheatEngine\\venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\windows-process-memory-mcp\\venv\\Scripts\\python.exe",
       "args": [
-        "C:\\path\\to\\AgentCheatEngine\\memory_mcp_server.py"
+        "C:\\path\\to\\windows-process-memory-mcp\\memory_mcp_server.py"
       ]
     }
   }
@@ -365,7 +366,7 @@ Check syntax:
 
 ```bat
 python -m py_compile memory_mcp_server.py
-python -m compileall agentcheatengine
+python -m compileall windows_process_memory_mcp
 ```
 
 The repository ignores `venv/`, `__pycache__/`, `.pytest_cache/`, and temporary
